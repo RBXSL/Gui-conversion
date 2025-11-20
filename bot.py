@@ -202,7 +202,7 @@ class RobloxConverter:
         
         return token_value
     
-    def convert_instance(self, item, var_name, parent_var="script.Parent"):
+    def convert_instance(self, item, var_name, parent_var="screenGui"):
         """Convert a single Roblox instance to Lua code"""
         class_name = item.get('class')
         
@@ -255,6 +255,18 @@ class RobloxConverter:
                 "-- Auto-generated Lua code from RBXMX file",
                 "-- Supports: Frames, UIStroke, UIGradient, UICorner, TextLabels, TextButtons, ImageLabels, and more!",
                 "-- Created by Discord Roblox Converter Bot",
+                "-- For executors: This creates a ScreenGui in your PlayerGui",
+                "",
+                "-- Get player and create ScreenGui",
+                "local Players = game:GetService('Players')",
+                "local player = Players.LocalPlayer",
+                "local playerGui = player:WaitForChild('PlayerGui')",
+                "",
+                "-- Create main ScreenGui container",
+                "local screenGui = Instance.new('ScreenGui')",
+                "screenGui.Name = 'ConvertedGui'",
+                "screenGui.ResetOnSpawn = false",
+                "screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling",
                 "",
             ]
             
@@ -262,11 +274,17 @@ class RobloxConverter:
             counter = 1
             for item in root.findall('Item'):
                 var_name = f"object{counter}"
-                self.convert_instance(item, var_name)
+                self.convert_instance(item, var_name, "screenGui")
                 counter += 1
             
             if counter == 1:
                 return "-- Error: No items found in file"
+            
+            # Add final line to parent ScreenGui to PlayerGui
+            self.lua_code.append("-- Parent the ScreenGui to PlayerGui (makes it visible)")
+            self.lua_code.append("screenGui.Parent = playerGui")
+            self.lua_code.append("")
+            self.lua_code.append("print('✅ GUI loaded successfully!')")
             
             return '\n'.join(self.lua_code)
         
