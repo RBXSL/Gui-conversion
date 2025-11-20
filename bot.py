@@ -3,11 +3,28 @@ from discord.ext import commands
 import xml.etree.ElementTree as ET
 import io
 import os
+from aiohttp import web
+import asyncio
 
 # Bot setup
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+# Web server to keep Render happy
+async def handle(request):
+    return web.Response(text="✅ Roblox Converter Bot is running!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get('/', handle)
+    app.router.add_get('/health', handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get('PORT', 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f'Web server running on port {port}')
 
 class RobloxConverter:
     def __init__(self):
@@ -172,6 +189,8 @@ class RobloxConverter:
             'AutomaticSize': {0: 'Enum.AutomaticSize.None', 1: 'Enum.AutomaticSize.X', 2: 'Enum.AutomaticSize.Y', 3: 'Enum.AutomaticSize.XY'},
             'EasingDirection': {0: 'Enum.EasingDirection.In', 1: 'Enum.EasingDirection.Out', 2: 'Enum.EasingDirection.InOut'},
             'EasingStyle': {0: 'Enum.EasingStyle.Linear', 1: 'Enum.EasingStyle.Sine', 2: 'Enum.EasingStyle.Back', 3: 'Enum.EasingStyle.Quad', 4: 'Enum.EasingStyle.Quart', 5: 'Enum.EasingStyle.Quint', 6: 'Enum.EasingStyle.Bounce', 7: 'Enum.EasingStyle.Elastic', 8: 'Enum.EasingStyle.Exponential', 9: 'Enum.EasingStyle.Circular', 10: 'Enum.EasingStyle.Cubic'},
+            'TextXAlignment': {0: 'Enum.TextXAlignment.Center', 1: 'Enum.TextXAlignment.Left', 2: 'Enum.TextXAlignment.Right'},
+            'TextYAlignment': {0: 'Enum.TextYAlignment.Center', 1: 'Enum.TextYAlignment.Top', 2: 'Enum.TextYAlignment.Bottom'},
         }
         
         try:
@@ -220,7 +239,7 @@ class RobloxConverter:
         self.lua_code.append(f'{self.indent()}{var_name}.Parent = {parent_var}')
         self.lua_code.append('')
         
-        # Process children recursively
+        # Process children recursively - FIXED: Don't use getparent()
         counter = 1
         for child in item.findall('Item'):
             child_var = f"{var_name}_{counter}"
@@ -239,20 +258,15 @@ class RobloxConverter:
                 "",
             ]
             
-            # Find all top-level items
-            items = root.findall('.//Item')
-            
-            if not items:
-                return "-- Error: No items found in file"
-            
-            # Process only root-level items
+            # Find all items at the root level (direct children of <roblox>)
             counter = 1
-            for item in items:
-                parent = item.getparent()
-                if parent is not None and parent.tag == 'roblox':
-                    var_name = f"object{counter}"
-                    self.convert_instance(item, var_name)
-                    counter += 1
+            for item in root.findall('Item'):
+                var_name = f"object{counter}"
+                self.convert_instance(item, var_name)
+                counter += 1
+            
+            if counter == 1:
+                return "-- Error: No items found in file"
             
             return '\n'.join(self.lua_code)
         
@@ -304,16 +318,12 @@ async def convert_file(ctx):
             await ctx.send("⚠️ RBXM (binary) files require additional libraries. Please convert to RBXMX format in Roblox Studio first!\n\n**How to convert:**\n1. Open your model in Roblox Studio\n2. Right-click and select 'Save to File'\n3. Choose 'Model Files (*.rbxmx)' as the file type")
             return
         
-        # Send the result
-        if len(lua_code) > 1900:  # Discord message limit is 2000 chars
-            # Send as file
-            lua_file = discord.File(
-                io.BytesIO(lua_code.encode('utf-8')),
-                filename=f"{attachment.filename.replace('.rbxmx', '').replace('.rbxm', '')}_converted.lua"
-            )
-            await ctx.send("✅ Conversion complete! Here's your Lua code:", file=lua_file)
-        else:
-            await ctx.send(f"✅ Conversion complete!\n```lua\n{lua_code}\n```")
+        # Always send as file (cleaner and easier to use)
+        lua_file = discord.File(
+            io.BytesIO(lua_code.encode('utf-8')),
+            filename=f"{attachment.filename.replace('.rbxmx', '').replace('.rbxm', '')}_converted.lua"
+        )
+        await ctx.send("✅ Conversion complete! Here's your Lua code file:", file=lua_file)
     
     except Exception as e:
         await ctx.send(f"❌ Error during conversion: {str(e)}")
@@ -347,6 +357,8 @@ async def help_convert(ctx):
 
 **Example:**
 Attach your file and type: `!convert`
+
+The bot will send you a .lua file with the converted code!
     """
     embed = discord.Embed(
         title="🤖 Roblox GUI Converter Bot",
@@ -355,11 +367,15 @@ Attach your file and type: `!convert`
     )
     await ctx.send(embed=embed)
 
-# Run the bot
+# Run both web server and bot
+async def main():
+    await start_web_server()
+    await bot.start(os.getenv('DISCORD_BOT_TOKEN'))
+
 if __name__ == "__main__":
     TOKEN = os.getenv('DISCORD_BOT_TOKEN')
     if not TOKEN:
         print("Error: DISCORD_BOT_TOKEN environment variable not set!")
         print("Please set your Discord bot token in Render's environment variables")
     else:
-        bot.run(TOKEN)
+        asyncio.run(main())
