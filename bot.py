@@ -6,12 +6,10 @@ import os
 from aiohttp import web
 import asyncio
 
-# Bot setup
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Web server to keep Render happy
 async def handle(request):
     return web.Response(text="✅ Roblox Converter Bot is running!")
 
@@ -30,32 +28,35 @@ class RobloxConverter:
     def __init__(self):
         self.indent_level = 0
         self.lua_code = []
+        self.config = {
+            'draggable': False,
+            'position': 'center',
+            'scale': 1.0,
+            'ignore_offscreen': True
+        }
+    
+    def set_config(self, **kwargs):
+        self.config.update(kwargs)
     
     def indent(self):
         return "\t" * self.indent_level
     
     def parse_property_value(self, prop):
-        """Extract value from property element - supports all Roblox types"""
         prop_name = prop.get('name')
         
-        # String types
         if prop.find('string') is not None:
             text = prop.find('string').text or ""
-            # Escape quotes and newlines
             text = text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
             return f'"{text}"'
         
-        # Content/ProtectedString (for scripts)
         elif prop.find('ProtectedString') is not None:
             text = prop.find('ProtectedString').text or ""
             text = text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
             return f'"{text}"'
         
-        # Boolean
         elif prop.find('bool') is not None:
             return prop.find('bool').text or "false"
         
-        # Numbers
         elif prop.find('int') is not None:
             return prop.find('int').text or "0"
         elif prop.find('int64') is not None:
@@ -65,7 +66,6 @@ class RobloxConverter:
         elif prop.find('double') is not None:
             return prop.find('double').text or "0"
         
-        # Color3
         elif prop.find('Color3') is not None:
             color = prop.find('Color3')
             r = color.find('R').text if color.find('R') is not None else "0"
@@ -73,7 +73,6 @@ class RobloxConverter:
             b = color.find('B').text if color.find('B') is not None else "0"
             return f"Color3.new({r}, {g}, {b})"
         
-        # Color3uint8 (0-255 range)
         elif prop.find('Color3uint8') is not None:
             color = prop.find('Color3uint8')
             r = int(color.text) >> 16 if color.text else 0
@@ -81,14 +80,12 @@ class RobloxConverter:
             b = int(color.text) & 0xFF if color.text else 0
             return f"Color3.fromRGB({r}, {g}, {b})"
         
-        # Vector2
         elif prop.find('Vector2') is not None:
             vec = prop.find('Vector2')
             x = vec.find('X').text if vec.find('X') is not None else "0"
             y = vec.find('Y').text if vec.find('Y') is not None else "0"
             return f"Vector2.new({x}, {y})"
         
-        # Vector3
         elif prop.find('Vector3') is not None:
             vec = prop.find('Vector3')
             x = vec.find('X').text if vec.find('X') is not None else "0"
@@ -96,14 +93,12 @@ class RobloxConverter:
             z = vec.find('Z').text if vec.find('Z') is not None else "0"
             return f"Vector3.new({x}, {y}, {z})"
         
-        # UDim
         elif prop.find('UDim') is not None:
             udim = prop.find('UDim')
             s = udim.find('S').text if udim.find('S') is not None else "0"
             o = udim.find('O').text if udim.find('O') is not None else "0"
             return f"UDim.new({s}, {o})"
         
-        # UDim2
         elif prop.find('UDim2') is not None:
             udim = prop.find('UDim2')
             xs = udim.find('XS').text if udim.find('XS') is not None else "0"
@@ -112,7 +107,6 @@ class RobloxConverter:
             yo = udim.find('YO').text if udim.find('YO') is not None else "0"
             return f"UDim2.new({xs}, {xo}, {ys}, {yo})"
         
-        # Rect
         elif prop.find('Rect') is not None:
             rect = prop.find('Rect')
             min_elem = rect.find('min')
@@ -124,37 +118,29 @@ class RobloxConverter:
                 max_y = max_elem.find('Y').text if max_elem.find('Y') is not None else "0"
                 return f"Rect.new({min_x}, {min_y}, {max_x}, {max_y})"
         
-        # Token (Enums)
         elif prop.find('token') is not None:
             token_value = prop.find('token').text or "0"
-            # For enums, we'll use the numeric value
             return token_value
         
-        # BrickColor
         elif prop.find('BrickColor') is not None:
             brick_color = prop.find('BrickColor').text or "194"
             return f"BrickColor.new({brick_color})"
         
-        # NumberSequence
         elif prop.find('NumberSequence') is not None:
-            return "NumberSequence.new(0)"  # Simplified, would need keypoint parsing
+            return "NumberSequence.new(0)"
         
-        # ColorSequence
         elif prop.find('ColorSequence') is not None:
-            return "ColorSequence.new(Color3.new(1,1,1))"  # Simplified
+            return "ColorSequence.new(Color3.new(1,1,1))"
         
-        # NumberRange
         elif prop.find('NumberRange') is not None:
             num_range = prop.find('NumberRange')
             min_val = num_range.text.split()[0] if num_range.text else "0"
             max_val = num_range.text.split()[1] if num_range.text and len(num_range.text.split()) > 1 else min_val
             return f"NumberRange.new({min_val}, {max_val})"
         
-        # Ref (References to other objects)
         elif prop.find('Ref') is not None:
-            return "nil"  # References need special handling
+            return "nil"
         
-        # Font
         elif prop.find('Font') is not None:
             font = prop.find('Font')
             family = font.find('Family')
@@ -166,7 +152,6 @@ class RobloxConverter:
                 weight_val = weight.text if weight is not None else "Regular"
                 style_val = style.text if style is not None else "Normal"
                 
-                # Try to parse font enum if it's a Roblox font
                 if "rbxasset://fonts/families/" in font_url:
                     font_name = font_url.split("/")[-1].replace(".json", "")
                     return f'Font.new("rbxasset://fonts/families/{font_name}.json", Enum.FontWeight.{weight_val}, Enum.FontStyle.{style_val})'
@@ -176,8 +161,6 @@ class RobloxConverter:
         return None
     
     def get_enum_from_token(self, class_name, prop_name, token_value):
-        """Convert token values to Enum names when possible"""
-        # Common enum mappings
         enum_map = {
             'BorderMode': {0: 'Enum.BorderMode.Outline', 1: 'Enum.BorderMode.Middle', 2: 'Enum.BorderMode.Inset'},
             'ApplyStrokeMode': {0: 'Enum.ApplyStrokeMode.Contextual', 1: 'Enum.ApplyStrokeMode.Border'},
@@ -202,22 +185,26 @@ class RobloxConverter:
         
         return token_value
     
-    def convert_instance(self, item, var_name, parent_var="screenGui"):
-        """Convert a single Roblox instance to Lua code"""
+    def convert_instance(self, item, var_name, parent_var="screenGui", is_root=False):
         class_name = item.get('class')
         
-        # Create the instance
         self.lua_code.append(f'{self.indent()}local {var_name} = Instance.new("{class_name}")')
         
-        # Set properties
         properties = item.find('Properties')
+        skip_position = is_root and self.config['position'] != 'original'
+        skip_size = is_root and self.config['scale'] != 1.0
+        
         if properties is not None:
             for prop in properties:
                 prop_name = prop.get('name')
                 
-                # Skip properties that shouldn't be set directly or cause issues
                 skip_props = ['Parent', 'Archivable', 'RobloxLocked']
                 if prop_name in skip_props:
+                    continue
+                
+                if skip_position and prop_name == 'Position':
+                    continue
+                if skip_size and prop_name == 'Size':
                     continue
                 
                 try:
@@ -226,43 +213,77 @@ class RobloxConverter:
                     if value is None:
                         continue
                     
-                    # Special handling for token/enum values
                     if prop.find('token') is not None:
                         value = self.get_enum_from_token(class_name, prop_name, value)
                     
                     self.lua_code.append(f'{self.indent()}{var_name}.{prop_name} = {value}')
                 except Exception as e:
-                    # Skip properties that fail to parse
                     pass
         
-        # Set parent last (important for Roblox)
+        if is_root:
+            if self.config['scale'] != 1.0:
+                properties_elem = item.find('Properties')
+                size_elem = properties_elem.find(".//UDim2[@name='Size']") if properties_elem is not None else None
+                if size_elem is not None:
+                    udim = size_elem.find('UDim2')
+                    xo = float(udim.find('XO').text if udim.find('XO') is not None else "0")
+                    yo = float(udim.find('YO').text if udim.find('YO') is not None else "0")
+                    new_xo = int(xo * self.config['scale'])
+                    new_yo = int(yo * self.config['scale'])
+                    self.lua_code.append(f'{self.indent()}{var_name}.Size = UDim2.new(0, {new_xo}, 0, {new_yo})')
+            
+            if self.config['position'] == 'center':
+                self.lua_code.append(f'{self.indent()}{var_name}.Position = UDim2.new(0.5, 0, 0.5, 0)')
+                self.lua_code.append(f'{self.indent()}{var_name}.AnchorPoint = Vector2.new(0.5, 0.5)')
+            elif self.config['position'] == 'top':
+                self.lua_code.append(f'{self.indent()}{var_name}.Position = UDim2.new(0.5, 0, 0, 10)')
+                self.lua_code.append(f'{self.indent()}{var_name}.AnchorPoint = Vector2.new(0.5, 0)')
+            elif self.config['position'] == 'bottom':
+                self.lua_code.append(f'{self.indent()}{var_name}.Position = UDim2.new(0.5, 0, 1, -10)')
+                self.lua_code.append(f'{self.indent()}{var_name}.AnchorPoint = Vector2.new(0.5, 1)')
+        
         self.lua_code.append(f'{self.indent()}{var_name}.Parent = {parent_var}')
         self.lua_code.append('')
         
-        # Process children recursively - FIXED: Don't use getparent()
         counter = 1
         for child in item.findall('Item'):
             child_var = f"{var_name}_{counter}"
-            self.convert_instance(child, child_var, var_name)
+            self.convert_instance(child, child_var, var_name, is_root=False)
             counter += 1
     
+    def add_draggable_script(self, root_var):
+        self.lua_code.append(f"local UserInputService = game:GetService('UserInputService')")
+        self.lua_code.append(f"local dragging, dragInput, dragStart, startPos")
+        self.lua_code.append(f"local function update(input)")
+        self.lua_code.append(f"\tlocal delta = input.Position - dragStart")
+        self.lua_code.append(f"\t{root_var}.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)")
+        self.lua_code.append(f"end")
+        self.lua_code.append(f"{root_var}.InputBegan:Connect(function(input)")
+        self.lua_code.append(f"\tif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then")
+        self.lua_code.append(f"\t\tdragging = true")
+        self.lua_code.append(f"\t\tdragStart = input.Position")
+        self.lua_code.append(f"\t\tstartPos = {root_var}.Position")
+        self.lua_code.append(f"\t\tinput.Changed:Connect(function()")
+        self.lua_code.append(f"\t\t\tif input.UserInputState == Enum.UserInputState.End then dragging = false end")
+        self.lua_code.append(f"\t\tend)")
+        self.lua_code.append(f"\tend")
+        self.lua_code.append(f"end)")
+        self.lua_code.append(f"{root_var}.InputChanged:Connect(function(input)")
+        self.lua_code.append(f"\tif input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end")
+        self.lua_code.append(f"end)")
+        self.lua_code.append(f"UserInputService.InputChanged:Connect(function(input)")
+        self.lua_code.append(f"\tif input == dragInput and dragging then update(input) end")
+        self.lua_code.append(f"end)")
+        self.lua_code.append("")
+    
     def convert_rbxmx(self, xml_content):
-        """Main conversion function for RBXMX files"""
         try:
             root = ET.fromstring(xml_content)
             
             self.lua_code = [
-                "-- Auto-generated Lua code from RBXMX file",
-                "-- Supports: Frames, UIStroke, UIGradient, UICorner, TextLabels, TextButtons, ImageLabels, and more!",
-                "-- Created by Discord Roblox Converter Bot",
-                "-- For executors: This creates a ScreenGui in your PlayerGui",
-                "",
-                "-- Get player and create ScreenGui",
                 "local Players = game:GetService('Players')",
                 "local player = Players.LocalPlayer",
                 "local playerGui = player:WaitForChild('PlayerGui')",
-                "",
-                "-- Create main ScreenGui container",
                 "local screenGui = Instance.new('ScreenGui')",
                 "screenGui.Name = 'ConvertedGui'",
                 "screenGui.ResetOnSpawn = false",
@@ -270,26 +291,27 @@ class RobloxConverter:
                 "",
             ]
             
-            # Find all items at the root level (direct children of <roblox>)
             counter = 1
+            root_objects = []
             for item in root.findall('Item'):
                 var_name = f"object{counter}"
-                self.convert_instance(item, var_name, "screenGui")
+                root_objects.append(var_name)
+                self.convert_instance(item, var_name, "screenGui", is_root=True)
                 counter += 1
             
             if counter == 1:
                 return "-- Error: No items found in file"
             
-            # Add final line to parent ScreenGui to PlayerGui
-            self.lua_code.append("-- Parent the ScreenGui to PlayerGui (makes it visible)")
+            if self.config['draggable'] and root_objects:
+                for root_obj in root_objects:
+                    self.add_draggable_script(root_obj)
+            
             self.lua_code.append("screenGui.Parent = playerGui")
-            self.lua_code.append("")
-            self.lua_code.append("print('✅ GUI loaded successfully!')")
             
             return '\n'.join(self.lua_code)
         
         except ET.ParseError as e:
-            return f"-- XML Parse Error: {str(e)}\n-- Make sure the file is a valid RBXMX file"
+            return f"-- XML Parse Error: {str(e)}"
         except Exception as e:
             return f"-- Error converting file: {str(e)}"
 
@@ -298,94 +320,92 @@ converter = RobloxConverter()
 @bot.event
 async def on_ready():
     print(f'{bot.user} has connected to Discord!')
-    print(f'Bot is ready to convert RBXMX/RBXM files!')
-    print(f'Supports all GUI types: Frames, UIStroke, UIGradient, UICorner, and more!')
+    print(f'Bot is ready to convert RBXMX files!')
 
 @bot.command(name='convert')
-async def convert_file(ctx):
-    """Convert attached RBXMX file to Lua code"""
+async def convert_file(ctx, draggable: str = "false", position: str = "center", scale: float = 1.0):
+    """Convert RBXMX file with options: !convert [draggable=true/false] [position=center/top/bottom/original] [scale=1.0]"""
     
     if not ctx.message.attachments:
-        await ctx.send("❌ Please attach an RBXMX or RBXM file to convert!")
+        await ctx.send("❌ Please attach an RBXMX file!")
         return
     
     attachment = ctx.message.attachments[0]
     
-    # Check file extension
     if not (attachment.filename.endswith('.rbxmx') or attachment.filename.endswith('.rbxm')):
-        await ctx.send("❌ Please attach a valid .rbxmx or .rbxm file!")
+        await ctx.send("❌ Please attach a valid .rbxmx file!")
         return
     
-    # Check file size (Discord limit is 8MB for free, but let's be safe)
-    if attachment.size > 5_000_000:  # 5MB limit
-        await ctx.send("❌ File is too large! Please upload files smaller than 5MB.")
+    if attachment.size > 5_000_000:
+        await ctx.send("❌ File too large! Max 5MB.")
         return
     
     try:
-        # Download the file
         file_content = await attachment.read()
         
-        await ctx.send("🔄 Converting file to Lua code... This supports Frames, UIStroke, UIGradient, UICorner, and all GUI types!")
+        draggable_bool = draggable.lower() == "true"
         
-        # Convert based on file type
+        valid_positions = ['center', 'top', 'bottom', 'original']
+        if position.lower() not in valid_positions:
+            position = 'center'
+        
+        if scale <= 0 or scale > 5:
+            scale = 1.0
+        
+        config_text = f"🔄 Converting with settings: Draggable={draggable_bool}, Position={position}, Scale={scale}x"
+        await ctx.send(config_text)
+        
+        converter.set_config(draggable=draggable_bool, position=position.lower(), scale=scale)
+        
         if attachment.filename.endswith('.rbxmx'):
-            # RBXMX is XML format
             lua_code = converter.convert_rbxmx(file_content.decode('utf-8'))
         else:
-            # RBXM is binary format - more complex, needs special handling
-            await ctx.send("⚠️ RBXM (binary) files require additional libraries. Please convert to RBXMX format in Roblox Studio first!\n\n**How to convert:**\n1. Open your model in Roblox Studio\n2. Right-click and select 'Save to File'\n3. Choose 'Model Files (*.rbxmx)' as the file type")
+            await ctx.send("⚠️ RBXM files not supported. Use RBXMX format!")
             return
         
-        # Always send as file (cleaner and easier to use)
         lua_file = discord.File(
             io.BytesIO(lua_code.encode('utf-8')),
             filename=f"{attachment.filename.replace('.rbxmx', '').replace('.rbxm', '')}_converted.lua"
         )
-        await ctx.send("✅ Conversion complete! Here's your Lua code file:", file=lua_file)
+        await ctx.send("✅ Conversion complete!", file=lua_file)
     
     except Exception as e:
-        await ctx.send(f"❌ Error during conversion: {str(e)}")
+        await ctx.send(f"❌ Error: {str(e)}")
         print(f"Error: {e}")
 
 @bot.command(name='help_convert')
 async def help_convert(ctx):
-    """Show help information"""
     help_text = """
-**Roblox File Converter Bot**
+**Roblox Converter Bot - Executor Ready**
 
-**Supported GUI Elements:**
-✅ Frames, ScrollingFrames, CanvasGroups
-✅ TextLabels, TextButtons, TextBoxes
-✅ ImageLabels, ImageButtons
-✅ UIStroke, UICorner, UIGradient
-✅ UIListLayout, UIGridLayout, UIPadding
-✅ UIAspectRatioConstraint, UISizeConstraint
-✅ ViewportFrames
-✅ And many more!
+**Basic Usage:**
+`!convert` - Convert with default settings (centered, not draggable)
 
-**Commands:**
-`!convert` - Attach an RBXMX file to convert it to Lua code
-`!help_convert` - Show this help message
+**Advanced Usage:**
+`!convert true center 1.5` - Make draggable, centered, 1.5x size
+`!convert false top 1.0` - Not draggable, top position, normal size
+`!convert true original 0.8` - Draggable, original position, 80% size
 
-**How to use:**
-1. In Roblox Studio, right-click your GUI/Model
-2. Click "Save to File"
-3. Choose "Model Files (*.rbxmx)" format
-4. Upload the file to Discord with `!convert` command
+**Parameters:**
+• **draggable**: true/false - Makes GUI draggable
+• **position**: center/top/bottom/original - Where to place GUI
+• **scale**: 0.1-5.0 - Size multiplier (1.0 = normal)
 
-**Example:**
-Attach your file and type: `!convert`
+**Examples:**
+`!convert true center 2.0` - Draggable, centered, 2x bigger
+`!convert false bottom 1.0` - Static, bottom screen
+`!convert true original 1.0` - Draggable, keeps original position
 
-The bot will send you a .lua file with the converted code!
+**Supported Elements:**
+Frames, TextLabels, TextButtons, ImageLabels, UIStroke, UICorner, UIGradient, and more!
     """
     embed = discord.Embed(
-        title="🤖 Roblox GUI Converter Bot",
+        title="🤖 Roblox GUI Converter",
         description=help_text,
         color=discord.Color.blue()
     )
     await ctx.send(embed=embed)
 
-# Run both web server and bot
 async def main():
     await start_web_server()
     await bot.start(os.getenv('DISCORD_BOT_TOKEN'))
@@ -393,7 +413,6 @@ async def main():
 if __name__ == "__main__":
     TOKEN = os.getenv('DISCORD_BOT_TOKEN')
     if not TOKEN:
-        print("Error: DISCORD_BOT_TOKEN environment variable not set!")
-        print("Please set your Discord bot token in Render's environment variables")
+        print("Error: DISCORD_BOT_TOKEN not set!")
     else:
         asyncio.run(main())
