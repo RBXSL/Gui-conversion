@@ -428,63 +428,34 @@ async def chelp(ctx):
 
 @bot.command(name='cconfig')
 async def cconfig(ctx):
-    help_text = """
-**Usage:** `!convert [draggable] [position] [scale] [destroykey] [gui_name] [transparency]`
+    help_text = """**Usage:** `!convert [draggable] [position] [scale] [destroykey] [gui_name] [transparency]`
 
 **Parameters:**
-
-• **draggable** (true/false)
-  Makes GUI draggable by mouse/touch
-
-• **position** (center/top/bottom/left/right/topleft/topright/bottomleft/bottomright/original)
-  Where to place the GUI on screen
-
-• **scale** (0.1 - 5.0)
-  Size multiplier (1.0 = normal)
-
-• **destroykey** (none/x/delete/backspace/escape/p/m/k)
-  Press this key to close/destroy the GUI
-
-• **gui_name** (any text, use _ for spaces)
-  Custom name for the ScreenGui
-
-• **transparency** (0.0 - 1.0)
-  Background transparency for root frames
+- **draggable** (true/false) - Makes GUI draggable
+- **position** (center/top/bottom/left/right/topleft/topright/bottomleft/bottomright/original)
+- **scale** (0.1 - 5.0) - Size multiplier
+- **destroykey** (none/x/delete/backspace/escape/p/m/k) - Key to close GUI
+- **gui_name** (text, use _ for spaces) - Custom name
+- **transparency** (0.0 - 1.0) - Background transparency
 
 **Examples:**
-`!convert true center 1.0 x My_Cool_GUI 0`
-`!convert false topleft 1.5 escape Menu 0.5`
-`!convert true original 2.0 none GUI 0`
-    """
-    embed = discord.Embed(title="⚙️ Configuration Options", description=help_text, color=discord.Color.blue())
+`!convert true center 1.0 x My_GUI 0`
+`!convert false topleft 1.5 escape Menu 0.5`"""
+    embed = discord.Embed(title="Config Options", description=help_text, color=discord.Color.blue())
     await ctx.send(embed=embed)
 
 @bot.command(name='ping')
 async def ping(ctx):
-    await ctx.send(f"🏓 Pong! Bot latency: {round(bot.latency * 1000)}ms")
+    await ctx.send(f"Pong! {round(bot.latency * 1000)}ms")
 
 @bot.command(name='example')
 async def example(ctx):
-    examples = """
-**Basic conversion (centered, not draggable):**
-`!convert`
-
-**Draggable GUI in center:**
-`!convert true center`
-
-**Draggable, top-left, 1.5x size:**
-`!convert true topleft 1.5`
-
-**With destroy key (press X to close):**
-`!convert true center 1.0 x`
-
-**Full customization:**
-`!convert true center 1.2 escape My_GUI 0.3`
-
-**Keep original position from file:**
-`!convert false original 1.0 none GUI 0`
-    """
-    embed = discord.Embed(title="📝 Example Usage", description=examples, color=discord.Color.purple())
+    examples = """**Basic:** `!convert`
+**Draggable centered:** `!convert true center`
+**Top-left 1.5x:** `!convert true topleft 1.5`
+**With close key:** `!convert true center 1.0 x`
+**Full config:** `!convert true center 1.2 escape My_GUI 0.3`"""
+    embed = discord.Embed(title="Examples", description=examples, color=discord.Color.purple())
     await ctx.send(embed=embed)
 
 async def main():
