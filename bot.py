@@ -30,7 +30,10 @@ class RobloxConverter:
         self.config = {
             'draggable': False,
             'position': 'center',
-            'scale': 1.0
+            'scale': 1.0,
+            'destroykey': 'none',
+            'gui_name': 'ConvertedGui',
+            'transparency': None
         }
         self.enum_map = {
             'BorderMode': {0: 'Enum.BorderMode.Outline', 1: 'Enum.BorderMode.Middle', 2: 'Enum.BorderMode.Inset'},
@@ -233,6 +236,27 @@ class RobloxConverter:
             elif self.config['position'] == 'bottom':
                 self.lua_code.append(f'{var_name}.Position = UDim2.new(0.5, 0, 1, -10)')
                 self.lua_code.append(f'{var_name}.AnchorPoint = Vector2.new(0.5, 1)')
+            elif self.config['position'] == 'left':
+                self.lua_code.append(f'{var_name}.Position = UDim2.new(0, 10, 0.5, 0)')
+                self.lua_code.append(f'{var_name}.AnchorPoint = Vector2.new(0, 0.5)')
+            elif self.config['position'] == 'right':
+                self.lua_code.append(f'{var_name}.Position = UDim2.new(1, -10, 0.5, 0)')
+                self.lua_code.append(f'{var_name}.AnchorPoint = Vector2.new(1, 0.5)')
+            elif self.config['position'] == 'topleft':
+                self.lua_code.append(f'{var_name}.Position = UDim2.new(0, 10, 0, 10)')
+                self.lua_code.append(f'{var_name}.AnchorPoint = Vector2.new(0, 0)')
+            elif self.config['position'] == 'topright':
+                self.lua_code.append(f'{var_name}.Position = UDim2.new(1, -10, 0, 10)')
+                self.lua_code.append(f'{var_name}.AnchorPoint = Vector2.new(1, 0)')
+            elif self.config['position'] == 'bottomleft':
+                self.lua_code.append(f'{var_name}.Position = UDim2.new(0, 10, 1, -10)')
+                self.lua_code.append(f'{var_name}.AnchorPoint = Vector2.new(0, 1)')
+            elif self.config['position'] == 'bottomright':
+                self.lua_code.append(f'{var_name}.Position = UDim2.new(1, -10, 1, -10)')
+                self.lua_code.append(f'{var_name}.AnchorPoint = Vector2.new(1, 1)')
+        
+        if is_root and self.config['transparency'] is not None:
+            self.lua_code.append(f'{var_name}.BackgroundTransparency = {self.config["transparency"]}')
         
         self.lua_code.append(f'{var_name}.Parent = {parent_var}')
         self.lua_code.append('')
@@ -242,6 +266,25 @@ class RobloxConverter:
             child_var = f"{var_name}_{counter}"
             self.convert_instance(child, child_var, var_name, is_root=False)
             counter += 1
+    
+    def add_destroy_key(self):
+        key_map = {
+            'x': 'Enum.KeyCode.X',
+            'delete': 'Enum.KeyCode.Delete',
+            'backspace': 'Enum.KeyCode.Backspace',
+            'escape': 'Enum.KeyCode.Escape',
+            'p': 'Enum.KeyCode.P',
+            'm': 'Enum.KeyCode.M',
+            'k': 'Enum.KeyCode.K'
+        }
+        key = self.config['destroykey'].lower()
+        if key in key_map:
+            self.lua_code.append(f"game:GetService('UserInputService').InputBegan:Connect(function(input, gameProcessed)")
+            self.lua_code.append(f"\tif not gameProcessed and input.KeyCode == {key_map[key]} then")
+            self.lua_code.append(f"\t\tscreenGui:Destroy()")
+            self.lua_code.append(f"\tend")
+            self.lua_code.append(f"end)")
+            self.lua_code.append("")
     
     def add_draggable(self, var_name):
         self.lua_code.append(f"local UIS = game:GetService('UserInputService')")
@@ -278,7 +321,7 @@ class RobloxConverter:
                 "local playerGui = player:WaitForChild('PlayerGui')",
                 "",
                 "local screenGui = Instance.new('ScreenGui')",
-                "screenGui.Name = 'ConvertedGui'",
+                f"screenGui.Name = '{self.config['gui_name']}'",
                 "screenGui.ResetOnSpawn = false",
                 "screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling",
                 "screenGui.Parent = playerGui",
@@ -300,6 +343,9 @@ class RobloxConverter:
                 for obj in root_objects:
                     self.add_draggable(obj)
             
+            if self.config['destroykey'] != 'none':
+                self.add_destroy_key()
+            
             return '\n'.join(self.lua_code)
         
         except ET.ParseError as e:
@@ -314,7 +360,7 @@ async def on_ready():
     print(f'{bot.user} has connected to Discord!')
 
 @bot.command(name='convert')
-async def convert_file(ctx, draggable: str = "false", position: str = "center", scale: float = 1.0):
+async def convert_file(ctx, draggable: str = "false", position: str = "center", scale: float = 1.0, destroykey: str = "none", gui_name: str = "ConvertedGui", transparency: float = -1):
     if not ctx.message.attachments:
         await ctx.send("❌ Please attach an RBXMX file!")
         return
@@ -333,15 +379,30 @@ async def convert_file(ctx, draggable: str = "false", position: str = "center", 
         file_content = await attachment.read()
         
         draggable_bool = draggable.lower() == "true"
-        valid_positions = ['center', 'top', 'bottom', 'original']
+        valid_positions = ['center', 'top', 'bottom', 'left', 'right', 'topleft', 'topright', 'bottomleft', 'bottomright', 'original']
         if position.lower() not in valid_positions:
             position = 'center'
         if scale <= 0 or scale > 5:
             scale = 1.0
+        valid_keys = ['none', 'x', 'delete', 'backspace', 'escape', 'p', 'm', 'k']
+        if destroykey.lower() not in valid_keys:
+            destroykey = 'none'
+        gui_name = gui_name.replace('_', ' ')
+        trans_value = None if transparency < 0 or transparency > 1 else transparency
         
-        await ctx.send(f"🔄 Converting: Draggable={draggable_bool}, Position={position}, Scale={scale}x")
+        config_msg = f"🔄 Draggable={draggable_bool} | Position={position} | Scale={scale}x | DestroyKey={destroykey} | Name={gui_name}"
+        if trans_value is not None:
+            config_msg += f" | Transparency={trans_value}"
+        await ctx.send(config_msg)
         
-        converter.set_config(draggable=draggable_bool, position=position.lower(), scale=scale)
+        converter.set_config(
+            draggable=draggable_bool, 
+            position=position.lower(), 
+            scale=scale,
+            destroykey=destroykey.lower(),
+            gui_name=gui_name,
+            transparency=trans_value
+        )
         lua_code = converter.convert_rbxmx(file_content.decode('utf-8'))
         
         lua_file = discord.File(
@@ -353,25 +414,77 @@ async def convert_file(ctx, draggable: str = "false", position: str = "center", 
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}")
 
-@bot.command(name='help_convert')
-async def help_convert(ctx):
+@bot.command(name='chelp')
+async def chelp(ctx):
     help_text = """
-**Roblox Converter Bot**
+`!convert` - Convert RBXMX file to Lua script
+`!cconfig` - See all configuration options
+`!chelp` - Show this help message
+`!ping` - Check if bot is online
+`!example` - Show example usage
+    """
+    embed = discord.Embed(title="📜 Bot Commands", description=help_text, color=discord.Color.green())
+    await ctx.send(embed=embed)
 
-**Usage:**
-`!convert` - Default settings
-`!convert true center 1.5` - Draggable, centered, 1.5x size
+@bot.command(name='cconfig')
+async def cconfig(ctx):
+    help_text = """
+**Usage:** `!convert [draggable] [position] [scale] [destroykey] [gui_name] [transparency]`
 
 **Parameters:**
-• **draggable**: true/false
-• **position**: center/top/bottom/original
-• **scale**: 0.1-5.0
+
+• **draggable** (true/false)
+  Makes GUI draggable by mouse/touch
+
+• **position** (center/top/bottom/left/right/topleft/topright/bottomleft/bottomright/original)
+  Where to place the GUI on screen
+
+• **scale** (0.1 - 5.0)
+  Size multiplier (1.0 = normal)
+
+• **destroykey** (none/x/delete/backspace/escape/p/m/k)
+  Press this key to close/destroy the GUI
+
+• **gui_name** (any text, use _ for spaces)
+  Custom name for the ScreenGui
+
+• **transparency** (0.0 - 1.0)
+  Background transparency for root frames
 
 **Examples:**
-`!convert true center 2.0`
-`!convert false original 1.0`
+`!convert true center 1.0 x My_Cool_GUI 0`
+`!convert false topleft 1.5 escape Menu 0.5`
+`!convert true original 2.0 none GUI 0`
     """
-    embed = discord.Embed(title="🤖 Help", description=help_text, color=discord.Color.blue())
+    embed = discord.Embed(title="⚙️ Configuration Options", description=help_text, color=discord.Color.blue())
+    await ctx.send(embed=embed)
+
+@bot.command(name='ping')
+async def ping(ctx):
+    await ctx.send(f"🏓 Pong! Bot latency: {round(bot.latency * 1000)}ms")
+
+@bot.command(name='example')
+async def example(ctx):
+    examples = """
+**Basic conversion (centered, not draggable):**
+`!convert`
+
+**Draggable GUI in center:**
+`!convert true center`
+
+**Draggable, top-left, 1.5x size:**
+`!convert true topleft 1.5`
+
+**With destroy key (press X to close):**
+`!convert true center 1.0 x`
+
+**Full customization:**
+`!convert true center 1.2 escape My_GUI 0.3`
+
+**Keep original position from file:**
+`!convert false original 1.0 none GUI 0`
+    """
+    embed = discord.Embed(title="📝 Example Usage", description=examples, color=discord.Color.purple())
     await ctx.send(embed=embed)
 
 async def main():
