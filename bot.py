@@ -496,4 +496,47 @@ if __name__ == "__main__":
     if not TOKEN:
         print("Error: DISCORD_BOT_TOKEN not set!")
     else:
+        asyncio.run(main())escape Menu 0.5`
+`!convert true original 2.0 none GUI 0`
+    """
+    embed = discord.Embed(title="⚙️ Configuration Options", description=help_text, color=discord.Color.blue())
+    await ctx.send(embed=embed)
+
+@bot.command(name='ping')
+async def ping(ctx):
+    await ctx.send(f"🏓 Pong! Bot latency: {round(bot.latency * 1000)}ms")
+
+@bot.command(name='example')
+async def example(ctx):
+    examples = """
+**Basic conversion (centered, not draggable):**
+`!convert`
+
+**Draggable GUI in center:**
+`!convert true center`
+
+**Draggable, top-left, 1.5x size:**
+`!convert true topleft 1.5`
+
+**With destroy key (press X to close):**
+`!convert true center 1.0 x`
+
+**Full customization:**
+`!convert true center 1.2 escape My_GUI 0.3`
+
+**Keep original position from file:**
+`!convert false original 1.0 none GUI 0`
+    """
+    embed = discord.Embed(title="📝 Example Usage", description=examples, color=discord.Color.purple())
+    await ctx.send(embed=embed)
+
+async def main():
+    await start_web_server()
+    await bot.start(os.getenv('DISCORD_BOT_TOKEN'))
+
+if __name__ == "__main__":
+    TOKEN = os.getenv('DISCORD_BOT_TOKEN')
+    if not TOKEN:
+        print("Error: DISCORD_BOT_TOKEN not set!")
+    else:
         asyncio.run(main())
