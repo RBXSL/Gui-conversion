@@ -11,7 +11,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 async def handle(request):
-    return web.Response(text="✅ Roblox Converter Bot is running!")
+    return web.Response(text="Bot is running!")
 
 async def start_web_server():
     app = web.Application()
@@ -26,142 +26,13 @@ async def start_web_server():
 
 class RobloxConverter:
     def __init__(self):
-        self.indent_level = 0
         self.lua_code = []
         self.config = {
             'draggable': False,
             'position': 'center',
-            'scale': 1.0,
-            'ignore_offscreen': True
+            'scale': 1.0
         }
-    
-    def set_config(self, **kwargs):
-        self.config.update(kwargs)
-    
-    def indent(self):
-        return "\t" * self.indent_level
-    
-    def parse_property_value(self, prop):
-        prop_name = prop.get('name')
-        
-        if prop.find('string') is not None:
-            text = prop.find('string').text or ""
-            text = text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
-            return f'"{text}"'
-        
-        elif prop.find('ProtectedString') is not None:
-            text = prop.find('ProtectedString').text or ""
-            text = text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
-            return f'"{text}"'
-        
-        elif prop.find('bool') is not None:
-            return prop.find('bool').text or "false"
-        
-        elif prop.find('int') is not None:
-            return prop.find('int').text or "0"
-        elif prop.find('int64') is not None:
-            return prop.find('int64').text or "0"
-        elif prop.find('float') is not None:
-            return prop.find('float').text or "0"
-        elif prop.find('double') is not None:
-            return prop.find('double').text or "0"
-        
-        elif prop.find('Color3') is not None:
-            color = prop.find('Color3')
-            r = color.find('R').text if color.find('R') is not None else "0"
-            g = color.find('G').text if color.find('G') is not None else "0"
-            b = color.find('B').text if color.find('B') is not None else "0"
-            return f"Color3.new({r}, {g}, {b})"
-        
-        elif prop.find('Color3uint8') is not None:
-            color = prop.find('Color3uint8')
-            r = int(color.text) >> 16 if color.text else 0
-            g = (int(color.text) >> 8) & 0xFF if color.text else 0
-            b = int(color.text) & 0xFF if color.text else 0
-            return f"Color3.fromRGB({r}, {g}, {b})"
-        
-        elif prop.find('Vector2') is not None:
-            vec = prop.find('Vector2')
-            x = vec.find('X').text if vec.find('X') is not None else "0"
-            y = vec.find('Y').text if vec.find('Y') is not None else "0"
-            return f"Vector2.new({x}, {y})"
-        
-        elif prop.find('Vector3') is not None:
-            vec = prop.find('Vector3')
-            x = vec.find('X').text if vec.find('X') is not None else "0"
-            y = vec.find('Y').text if vec.find('Y') is not None else "0"
-            z = vec.find('Z').text if vec.find('Z') is not None else "0"
-            return f"Vector3.new({x}, {y}, {z})"
-        
-        elif prop.find('UDim') is not None:
-            udim = prop.find('UDim')
-            s = udim.find('S').text if udim.find('S') is not None else "0"
-            o = udim.find('O').text if udim.find('O') is not None else "0"
-            return f"UDim.new({s}, {o})"
-        
-        elif prop.find('UDim2') is not None:
-            udim = prop.find('UDim2')
-            xs = udim.find('XS').text if udim.find('XS') is not None else "0"
-            xo = udim.find('XO').text if udim.find('XO') is not None else "0"
-            ys = udim.find('YS').text if udim.find('YS') is not None else "0"
-            yo = udim.find('YO').text if udim.find('YO') is not None else "0"
-            return f"UDim2.new({xs}, {xo}, {ys}, {yo})"
-        
-        elif prop.find('Rect') is not None:
-            rect = prop.find('Rect')
-            min_elem = rect.find('min')
-            max_elem = rect.find('max')
-            if min_elem is not None and max_elem is not None:
-                min_x = min_elem.find('X').text if min_elem.find('X') is not None else "0"
-                min_y = min_elem.find('Y').text if min_elem.find('Y') is not None else "0"
-                max_x = max_elem.find('X').text if max_elem.find('X') is not None else "0"
-                max_y = max_elem.find('Y').text if max_elem.find('Y') is not None else "0"
-                return f"Rect.new({min_x}, {min_y}, {max_x}, {max_y})"
-        
-        elif prop.find('token') is not None:
-            token_value = prop.find('token').text or "0"
-            return token_value
-        
-        elif prop.find('BrickColor') is not None:
-            brick_color = prop.find('BrickColor').text or "194"
-            return f"BrickColor.new({brick_color})"
-        
-        elif prop.find('NumberSequence') is not None:
-            return "NumberSequence.new(0)"
-        
-        elif prop.find('ColorSequence') is not None:
-            return "ColorSequence.new(Color3.new(1,1,1))"
-        
-        elif prop.find('NumberRange') is not None:
-            num_range = prop.find('NumberRange')
-            min_val = num_range.text.split()[0] if num_range.text else "0"
-            max_val = num_range.text.split()[1] if num_range.text and len(num_range.text.split()) > 1 else min_val
-            return f"NumberRange.new({min_val}, {max_val})"
-        
-        elif prop.find('Ref') is not None:
-            return "nil"
-        
-        elif prop.find('Font') is not None:
-            font = prop.find('Font')
-            family = font.find('Family')
-            weight = font.find('Weight')
-            style = font.find('Style')
-            
-            if family is not None and family.find('url') is not None:
-                font_url = family.find('url').text or ""
-                weight_val = weight.text if weight is not None else "Regular"
-                style_val = style.text if style is not None else "Normal"
-                
-                if "rbxasset://fonts/families/" in font_url:
-                    font_name = font_url.split("/")[-1].replace(".json", "")
-                    return f'Font.new("rbxasset://fonts/families/{font_name}.json", Enum.FontWeight.{weight_val}, Enum.FontStyle.{style_val})'
-            
-            return 'Font.new("rbxasset://fonts/families/SourceSansPro.json")'
-        
-        return None
-    
-    def get_enum_from_token(self, class_name, prop_name, token_value):
-        enum_map = {
+        self.enum_map = {
             'BorderMode': {0: 'Enum.BorderMode.Outline', 1: 'Enum.BorderMode.Middle', 2: 'Enum.BorderMode.Inset'},
             'ApplyStrokeMode': {0: 'Enum.ApplyStrokeMode.Contextual', 1: 'Enum.ApplyStrokeMode.Border'},
             'LineJoinMode': {0: 'Enum.LineJoinMode.Round', 1: 'Enum.LineJoinMode.Bevel', 2: 'Enum.LineJoinMode.Miter'},
@@ -170,81 +41,200 @@ class RobloxConverter:
             'VerticalAlignment': {0: 'Enum.VerticalAlignment.Center', 1: 'Enum.VerticalAlignment.Top', 2: 'Enum.VerticalAlignment.Bottom'},
             'SizeConstraint': {0: 'Enum.SizeConstraint.RelativeXY', 1: 'Enum.SizeConstraint.RelativeXX', 2: 'Enum.SizeConstraint.RelativeYY'},
             'AutomaticSize': {0: 'Enum.AutomaticSize.None', 1: 'Enum.AutomaticSize.X', 2: 'Enum.AutomaticSize.Y', 3: 'Enum.AutomaticSize.XY'},
-            'EasingDirection': {0: 'Enum.EasingDirection.In', 1: 'Enum.EasingDirection.Out', 2: 'Enum.EasingDirection.InOut'},
-            'EasingStyle': {0: 'Enum.EasingStyle.Linear', 1: 'Enum.EasingStyle.Sine', 2: 'Enum.EasingStyle.Back', 3: 'Enum.EasingStyle.Quad', 4: 'Enum.EasingStyle.Quart', 5: 'Enum.EasingStyle.Quint', 6: 'Enum.EasingStyle.Bounce', 7: 'Enum.EasingStyle.Elastic', 8: 'Enum.EasingStyle.Exponential', 9: 'Enum.EasingStyle.Circular', 10: 'Enum.EasingStyle.Cubic'},
             'TextXAlignment': {0: 'Enum.TextXAlignment.Center', 1: 'Enum.TextXAlignment.Left', 2: 'Enum.TextXAlignment.Right'},
             'TextYAlignment': {0: 'Enum.TextYAlignment.Center', 1: 'Enum.TextYAlignment.Top', 2: 'Enum.TextYAlignment.Bottom'},
+            'ScaleType': {0: 'Enum.ScaleType.Stretch', 1: 'Enum.ScaleType.Slice', 2: 'Enum.ScaleType.Tile', 3: 'Enum.ScaleType.Fit', 4: 'Enum.ScaleType.Crop'},
+            'ResamplerMode': {0: 'Enum.ResamplerMode.Default', 1: 'Enum.ResamplerMode.Pixelated'},
+            'ScrollingDirection': {0: 'Enum.ScrollingDirection.X', 1: 'Enum.ScrollingDirection.Y', 2: 'Enum.ScrollingDirection.XY'},
+            'SortOrder': {0: 'Enum.SortOrder.Name', 1: 'Enum.SortOrder.Custom', 2: 'Enum.SortOrder.LayoutOrder'},
+            'StartCorner': {0: 'Enum.StartCorner.TopLeft', 1: 'Enum.StartCorner.TopRight', 2: 'Enum.StartCorner.BottomLeft', 3: 'Enum.StartCorner.BottomRight'},
         }
-        
-        try:
-            token_int = int(token_value)
-            if prop_name in enum_map and token_int in enum_map[prop_name]:
-                return enum_map[prop_name][token_int]
-        except:
-            pass
-        
-        return token_value
     
-    def convert_instance(self, item, var_name, parent_var="screenGui", is_root=False):
+    def set_config(self, **kwargs):
+        self.config.update(kwargs)
+    
+    def parse_property(self, prop_elem):
+        prop_name = prop_elem.get('name')
+        tag = prop_elem.tag
+        
+        if tag == 'string':
+            text = prop_elem.text or ""
+            text = text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+            return prop_name, f'"{text}"'
+        
+        elif tag == 'bool':
+            return prop_name, prop_elem.text or "false"
+        
+        elif tag == 'int':
+            return prop_name, prop_elem.text or "0"
+        
+        elif tag == 'float':
+            return prop_name, prop_elem.text or "0"
+        
+        elif tag == 'double':
+            return prop_name, prop_elem.text or "0"
+        
+        elif tag == 'Color3':
+            r = prop_elem.find('R').text if prop_elem.find('R') is not None else "0"
+            g = prop_elem.find('G').text if prop_elem.find('G') is not None else "0"
+            b = prop_elem.find('B').text if prop_elem.find('B') is not None else "0"
+            return prop_name, f"Color3.new({r}, {g}, {b})"
+        
+        elif tag == 'Color3uint8':
+            if prop_elem.text:
+                val = int(prop_elem.text)
+                r = (val >> 16) & 0xFF
+                g = (val >> 8) & 0xFF
+                b = val & 0xFF
+                return prop_name, f"Color3.fromRGB({r}, {g}, {b})"
+            return prop_name, "Color3.new(1, 1, 1)"
+        
+        elif tag == 'UDim2':
+            xs = prop_elem.find('XS').text if prop_elem.find('XS') is not None else "0"
+            xo = prop_elem.find('XO').text if prop_elem.find('XO') is not None else "0"
+            ys = prop_elem.find('YS').text if prop_elem.find('YS') is not None else "0"
+            yo = prop_elem.find('YO').text if prop_elem.find('YO') is not None else "0"
+            return prop_name, f"UDim2.new({xs}, {xo}, {ys}, {yo})"
+        
+        elif tag == 'UDim':
+            s = prop_elem.find('S').text if prop_elem.find('S') is not None else "0"
+            o = prop_elem.find('O').text if prop_elem.find('O') is not None else "0"
+            return prop_name, f"UDim.new({s}, {o})"
+        
+        elif tag == 'Vector2':
+            x = prop_elem.find('X').text if prop_elem.find('X') is not None else "0"
+            y = prop_elem.find('Y').text if prop_elem.find('Y') is not None else "0"
+            return prop_name, f"Vector2.new({x}, {y})"
+        
+        elif tag == 'Vector3':
+            x = prop_elem.find('X').text if prop_elem.find('X') is not None else "0"
+            y = prop_elem.find('Y').text if prop_elem.find('Y') is not None else "0"
+            z = prop_elem.find('Z').text if prop_elem.find('Z') is not None else "0"
+            return prop_name, f"Vector3.new({x}, {y}, {z})"
+        
+        elif tag == 'token':
+            token_val = int(prop_elem.text or "0")
+            if prop_name in self.enum_map and token_val in self.enum_map[prop_name]:
+                return prop_name, self.enum_map[prop_name][token_val]
+            return prop_name, str(token_val)
+        
+        elif tag == 'Font':
+            family = prop_elem.find('Family')
+            weight = prop_elem.find('Weight')
+            style = prop_elem.find('Style')
+            
+            font_url = "rbxasset://fonts/families/SourceSansPro.json"
+            weight_val = "Regular"
+            style_val = "Normal"
+            
+            if family is not None:
+                url_elem = family.find('url')
+                if url_elem is not None and url_elem.text:
+                    font_url = url_elem.text
+            
+            if weight is not None and weight.text:
+                weight_val = weight.text
+            
+            if style is not None and style.text:
+                style_val = style.text
+            
+            weight_map = {'100': 'Thin', '200': 'ExtraLight', '300': 'Light', '400': 'Regular', '500': 'Medium', '600': 'SemiBold', '700': 'Bold', '800': 'ExtraBold', '900': 'Heavy'}
+            if weight_val in weight_map:
+                weight_val = weight_map[weight_val]
+            
+            return prop_name, f'Font.new("{font_url}", Enum.FontWeight.{weight_val}, Enum.FontStyle.{style_val})'
+        
+        elif tag == 'Rect':
+            min_elem = prop_elem.find('min')
+            max_elem = prop_elem.find('max')
+            if min_elem is not None and max_elem is not None:
+                min_x = min_elem.find('X').text if min_elem.find('X') is not None else "0"
+                min_y = min_elem.find('Y').text if min_elem.find('Y') is not None else "0"
+                max_x = max_elem.find('X').text if max_elem.find('X') is not None else "0"
+                max_y = max_elem.find('Y').text if max_elem.find('Y') is not None else "0"
+                return prop_name, f"Rect.new({min_x}, {min_y}, {max_x}, {max_y})"
+        
+        elif tag == 'NumberSequence':
+            return prop_name, "NumberSequence.new(1)"
+        
+        elif tag == 'ColorSequence':
+            return prop_name, "ColorSequence.new(Color3.new(1, 1, 1))"
+        
+        elif tag == 'NumberRange':
+            if prop_elem.text:
+                parts = prop_elem.text.split()
+                if len(parts) >= 2:
+                    return prop_name, f"NumberRange.new({parts[0]}, {parts[1]})"
+            return prop_name, "NumberRange.new(0, 1)"
+        
+        elif tag == 'Ref':
+            return prop_name, None
+        
+        elif tag == 'Content':
+            if prop_elem.text:
+                text = prop_elem.text.replace('\\', '\\\\').replace('"', '\\"')
+                return prop_name, f'"{text}"'
+            url_elem = prop_elem.find('url')
+            if url_elem is not None and url_elem.text:
+                return prop_name, f'"{url_elem.text}"'
+            return prop_name, '""'
+        
+        return prop_name, None
+    
+    def convert_instance(self, item, var_name, parent_var, is_root=False):
         class_name = item.get('class')
         
-        self.lua_code.append(f'{self.indent()}local {var_name} = Instance.new("{class_name}")')
+        self.lua_code.append(f'local {var_name} = Instance.new("{class_name}")')
         
         properties = item.find('Properties')
-        original_size = None
+        stored_size = None
         
         if properties is not None:
-            for prop in properties:
-                prop_name = prop.get('name')
+            for prop_elem in properties:
+                prop_name = prop_elem.get('name')
                 
-                skip_props = ['Parent', 'Archivable', 'RobloxLocked']
-                if prop_name in skip_props:
+                if prop_name in ['Parent', 'Archivable', 'RobloxLocked']:
                     continue
                 
                 if is_root and prop_name == 'Position' and self.config['position'] != 'original':
                     continue
                 
-                if is_root and prop_name == 'Size' and self.config['scale'] != 1.0:
-                    size_elem = prop.find('UDim2')
-                    if size_elem is not None:
-                        xs = size_elem.find('XS').text if size_elem.find('XS') is not None else "0"
-                        xo = size_elem.find('XO').text if size_elem.find('XO') is not None else "0"
-                        ys = size_elem.find('YS').text if size_elem.find('YS') is not None else "0"
-                        yo = size_elem.find('YO').text if size_elem.find('YO') is not None else "0"
-                        original_size = (float(xs), float(xo), float(ys), float(yo))
+                if is_root and prop_name == 'Size':
+                    parsed = self.parse_property(prop_elem)
+                    if parsed and parsed[1]:
+                        stored_size = parsed[1]
+                        if self.config['scale'] == 1.0:
+                            self.lua_code.append(f'{var_name}.{prop_name} = {parsed[1]}')
+                        else:
+                            udim = prop_elem
+                            xs = udim.find('XS').text if udim.find('XS') is not None else "0"
+                            xo = float(udim.find('XO').text if udim.find('XO') is not None else "0")
+                            ys = udim.find('YS').text if udim.find('YS') is not None else "0"
+                            yo = float(udim.find('YO').text if udim.find('YO') is not None else "0")
+                            new_xo = int(xo * self.config['scale'])
+                            new_yo = int(yo * self.config['scale'])
+                            self.lua_code.append(f'{var_name}.Size = UDim2.new({xs}, {new_xo}, {ys}, {new_yo})')
                     continue
                 
                 try:
-                    value = self.parse_property_value(prop)
-                    
-                    if value is None:
-                        continue
-                    
-                    if prop.find('token') is not None:
-                        value = self.get_enum_from_token(class_name, prop_name, value)
-                    
-                    self.lua_code.append(f'{self.indent()}{var_name}.{prop_name} = {value}')
-                except Exception as e:
+                    parsed = self.parse_property(prop_elem)
+                    if parsed and parsed[1] is not None:
+                        self.lua_code.append(f'{var_name}.{parsed[0]} = {parsed[1]}')
+                except:
                     pass
         
-        if is_root:
-            if self.config['scale'] != 1.0 and original_size:
-                xs, xo, ys, yo = original_size
-                new_xo = int(xo * self.config['scale'])
-                new_yo = int(yo * self.config['scale'])
-                self.lua_code.append(f'{self.indent()}{var_name}.Size = UDim2.new({xs}, {new_xo}, {ys}, {new_yo})')
-            
+        if is_root and self.config['position'] != 'original':
             if self.config['position'] == 'center':
-                self.lua_code.append(f'{self.indent()}{var_name}.Position = UDim2.new(0.5, 0, 0.5, 0)')
-                self.lua_code.append(f'{self.indent()}{var_name}.AnchorPoint = Vector2.new(0.5, 0.5)')
+                self.lua_code.append(f'{var_name}.Position = UDim2.new(0.5, 0, 0.5, 0)')
+                self.lua_code.append(f'{var_name}.AnchorPoint = Vector2.new(0.5, 0.5)')
             elif self.config['position'] == 'top':
-                self.lua_code.append(f'{self.indent()}{var_name}.Position = UDim2.new(0.5, 0, 0, 10)')
-                self.lua_code.append(f'{self.indent()}{var_name}.AnchorPoint = Vector2.new(0.5, 0)')
+                self.lua_code.append(f'{var_name}.Position = UDim2.new(0.5, 0, 0, 10)')
+                self.lua_code.append(f'{var_name}.AnchorPoint = Vector2.new(0.5, 0)')
             elif self.config['position'] == 'bottom':
-                self.lua_code.append(f'{self.indent()}{var_name}.Position = UDim2.new(0.5, 0, 1, -10)')
-                self.lua_code.append(f'{self.indent()}{var_name}.AnchorPoint = Vector2.new(0.5, 1)')
+                self.lua_code.append(f'{var_name}.Position = UDim2.new(0.5, 0, 1, -10)')
+                self.lua_code.append(f'{var_name}.AnchorPoint = Vector2.new(0.5, 1)')
         
-        self.lua_code.append(f'{self.indent()}{var_name}.Parent = {parent_var}')
+        self.lua_code.append(f'{var_name}.Parent = {parent_var}')
         self.lua_code.append('')
         
         counter = 1
@@ -253,27 +243,27 @@ class RobloxConverter:
             self.convert_instance(child, child_var, var_name, is_root=False)
             counter += 1
     
-    def add_draggable_script(self, root_var):
-        self.lua_code.append(f"local UserInputService = game:GetService('UserInputService')")
+    def add_draggable(self, var_name):
+        self.lua_code.append(f"local UIS = game:GetService('UserInputService')")
         self.lua_code.append(f"local dragging, dragInput, dragStart, startPos")
         self.lua_code.append(f"local function update(input)")
         self.lua_code.append(f"\tlocal delta = input.Position - dragStart")
-        self.lua_code.append(f"\t{root_var}.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)")
+        self.lua_code.append(f"\t{var_name}.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)")
         self.lua_code.append(f"end")
-        self.lua_code.append(f"{root_var}.InputBegan:Connect(function(input)")
+        self.lua_code.append(f"{var_name}.InputBegan:Connect(function(input)")
         self.lua_code.append(f"\tif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then")
         self.lua_code.append(f"\t\tdragging = true")
         self.lua_code.append(f"\t\tdragStart = input.Position")
-        self.lua_code.append(f"\t\tstartPos = {root_var}.Position")
+        self.lua_code.append(f"\t\tstartPos = {var_name}.Position")
         self.lua_code.append(f"\t\tinput.Changed:Connect(function()")
         self.lua_code.append(f"\t\t\tif input.UserInputState == Enum.UserInputState.End then dragging = false end")
         self.lua_code.append(f"\t\tend)")
         self.lua_code.append(f"\tend")
         self.lua_code.append(f"end)")
-        self.lua_code.append(f"{root_var}.InputChanged:Connect(function(input)")
+        self.lua_code.append(f"{var_name}.InputChanged:Connect(function(input)")
         self.lua_code.append(f"\tif input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end")
         self.lua_code.append(f"end)")
-        self.lua_code.append(f"UserInputService.InputChanged:Connect(function(input)")
+        self.lua_code.append(f"UIS.InputChanged:Connect(function(input)")
         self.lua_code.append(f"\tif input == dragInput and dragging then update(input) end")
         self.lua_code.append(f"end)")
         self.lua_code.append("")
@@ -286,15 +276,17 @@ class RobloxConverter:
                 "local Players = game:GetService('Players')",
                 "local player = Players.LocalPlayer",
                 "local playerGui = player:WaitForChild('PlayerGui')",
+                "",
                 "local screenGui = Instance.new('ScreenGui')",
                 "screenGui.Name = 'ConvertedGui'",
                 "screenGui.ResetOnSpawn = false",
                 "screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling",
+                "screenGui.Parent = playerGui",
                 "",
             ]
             
-            counter = 1
             root_objects = []
+            counter = 1
             for item in root.findall('Item'):
                 var_name = f"object{counter}"
                 root_objects.append(var_name)
@@ -305,37 +297,32 @@ class RobloxConverter:
                 return "-- Error: No items found in file"
             
             if self.config['draggable'] and root_objects:
-                for root_obj in root_objects:
-                    self.add_draggable_script(root_obj)
-            
-            self.lua_code.append("screenGui.Parent = playerGui")
+                for obj in root_objects:
+                    self.add_draggable(obj)
             
             return '\n'.join(self.lua_code)
         
         except ET.ParseError as e:
             return f"-- XML Parse Error: {str(e)}"
         except Exception as e:
-            return f"-- Error converting file: {str(e)}"
+            return f"-- Error: {str(e)}"
 
 converter = RobloxConverter()
 
 @bot.event
 async def on_ready():
     print(f'{bot.user} has connected to Discord!')
-    print(f'Bot is ready to convert RBXMX files!')
 
 @bot.command(name='convert')
 async def convert_file(ctx, draggable: str = "false", position: str = "center", scale: float = 1.0):
-    """Convert RBXMX file with options: !convert [draggable=true/false] [position=center/top/bottom/original] [scale=1.0]"""
-    
     if not ctx.message.attachments:
         await ctx.send("❌ Please attach an RBXMX file!")
         return
     
     attachment = ctx.message.attachments[0]
     
-    if not (attachment.filename.endswith('.rbxmx') or attachment.filename.endswith('.rbxm')):
-        await ctx.send("❌ Please attach a valid .rbxmx file!")
+    if not attachment.filename.endswith('.rbxmx'):
+        await ctx.send("❌ Please attach a .rbxmx file!")
         return
     
     if attachment.size > 5_000_000:
@@ -346,66 +333,45 @@ async def convert_file(ctx, draggable: str = "false", position: str = "center", 
         file_content = await attachment.read()
         
         draggable_bool = draggable.lower() == "true"
-        
         valid_positions = ['center', 'top', 'bottom', 'original']
         if position.lower() not in valid_positions:
             position = 'center'
-        
         if scale <= 0 or scale > 5:
             scale = 1.0
         
-        config_text = f"🔄 Converting with settings: Draggable={draggable_bool}, Position={position}, Scale={scale}x"
-        await ctx.send(config_text)
+        await ctx.send(f"🔄 Converting: Draggable={draggable_bool}, Position={position}, Scale={scale}x")
         
         converter.set_config(draggable=draggable_bool, position=position.lower(), scale=scale)
-        
-        if attachment.filename.endswith('.rbxmx'):
-            lua_code = converter.convert_rbxmx(file_content.decode('utf-8'))
-        else:
-            await ctx.send("⚠️ RBXM files not supported. Use RBXMX format!")
-            return
+        lua_code = converter.convert_rbxmx(file_content.decode('utf-8'))
         
         lua_file = discord.File(
             io.BytesIO(lua_code.encode('utf-8')),
-            filename=f"{attachment.filename.replace('.rbxmx', '').replace('.rbxm', '')}_converted.lua"
+            filename=f"{attachment.filename.replace('.rbxmx', '')}_converted.lua"
         )
-        await ctx.send("✅ Conversion complete!", file=lua_file)
+        await ctx.send("✅ Done!", file=lua_file)
     
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}")
-        print(f"Error: {e}")
 
 @bot.command(name='help_convert')
 async def help_convert(ctx):
     help_text = """
-**Roblox Converter Bot - Executor Ready**
+**Roblox Converter Bot**
 
-**Basic Usage:**
-`!convert` - Convert with default settings (centered, not draggable)
-
-**Advanced Usage:**
-`!convert true center 1.5` - Make draggable, centered, 1.5x size
-`!convert false top 1.0` - Not draggable, top position, normal size
-`!convert true original 0.8` - Draggable, original position, 80% size
+**Usage:**
+`!convert` - Default settings
+`!convert true center 1.5` - Draggable, centered, 1.5x size
 
 **Parameters:**
-• **draggable**: true/false - Makes GUI draggable
-• **position**: center/top/bottom/original - Where to place GUI
-• **scale**: 0.1-5.0 - Size multiplier (1.0 = normal)
+• **draggable**: true/false
+• **position**: center/top/bottom/original
+• **scale**: 0.1-5.0
 
 **Examples:**
-`!convert true center 2.0` - Draggable, centered, 2x bigger
-`!convert false bottom 1.0` - Static, bottom screen
-`!convert true original 1.0` - Draggable, keeps original position
-
-**Supported Elements:**
-Frames, TextLabels, TextButtons, ImageLabels, UIStroke, UICorner, UIGradient, and more!
+`!convert true center 2.0`
+`!convert false original 1.0`
     """
-    embed = discord.Embed(
-        title="🤖 Roblox GUI Converter",
-        description=help_text,
-        color=discord.Color.blue()
-    )
+    embed = discord.Embed(title="🤖 Help", description=help_text, color=discord.Color.blue())
     await ctx.send(embed=embed)
 
 async def main():
