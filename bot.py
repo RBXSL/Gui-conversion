@@ -191,8 +191,7 @@ class RobloxConverter:
         self.lua_code.append(f'{self.indent()}local {var_name} = Instance.new("{class_name}")')
         
         properties = item.find('Properties')
-        skip_position = is_root and self.config['position'] != 'original'
-        skip_size = is_root and self.config['scale'] != 1.0
+        original_size = None
         
         if properties is not None:
             for prop in properties:
@@ -202,9 +201,17 @@ class RobloxConverter:
                 if prop_name in skip_props:
                     continue
                 
-                if skip_position and prop_name == 'Position':
+                if is_root and prop_name == 'Position' and self.config['position'] != 'original':
                     continue
-                if skip_size and prop_name == 'Size':
+                
+                if is_root and prop_name == 'Size' and self.config['scale'] != 1.0:
+                    size_elem = prop.find('UDim2')
+                    if size_elem is not None:
+                        xs = size_elem.find('XS').text if size_elem.find('XS') is not None else "0"
+                        xo = size_elem.find('XO').text if size_elem.find('XO') is not None else "0"
+                        ys = size_elem.find('YS').text if size_elem.find('YS') is not None else "0"
+                        yo = size_elem.find('YO').text if size_elem.find('YO') is not None else "0"
+                        original_size = (float(xs), float(xo), float(ys), float(yo))
                     continue
                 
                 try:
@@ -221,16 +228,11 @@ class RobloxConverter:
                     pass
         
         if is_root:
-            if self.config['scale'] != 1.0:
-                properties_elem = item.find('Properties')
-                size_elem = properties_elem.find(".//UDim2[@name='Size']") if properties_elem is not None else None
-                if size_elem is not None:
-                    udim = size_elem.find('UDim2')
-                    xo = float(udim.find('XO').text if udim.find('XO') is not None else "0")
-                    yo = float(udim.find('YO').text if udim.find('YO') is not None else "0")
-                    new_xo = int(xo * self.config['scale'])
-                    new_yo = int(yo * self.config['scale'])
-                    self.lua_code.append(f'{self.indent()}{var_name}.Size = UDim2.new(0, {new_xo}, 0, {new_yo})')
+            if self.config['scale'] != 1.0 and original_size:
+                xs, xo, ys, yo = original_size
+                new_xo = int(xo * self.config['scale'])
+                new_yo = int(yo * self.config['scale'])
+                self.lua_code.append(f'{self.indent()}{var_name}.Size = UDim2.new({xs}, {new_xo}, {ys}, {new_yo})')
             
             if self.config['position'] == 'center':
                 self.lua_code.append(f'{self.indent()}{var_name}.Position = UDim2.new(0.5, 0, 0.5, 0)')
