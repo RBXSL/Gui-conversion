@@ -500,7 +500,9 @@ async def cconfig(ctx):
     embed.add_field(name="key", value="none/x/delete/backspace/escape/p/m/k", inline=True)
     embed.add_field(name="name", value="GUI name (use _ for spaces)", inline=True)
     embed.add_field(name="trans", value="0.0-1.0", inline=True)
-await ctx.send(embed=embed)
+
+
+    await ctx.send(embed=embed)
 
 async def main():
     await start_web_server()
