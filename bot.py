@@ -54,10 +54,10 @@ class RobloxConverter:
         }
         self.global_min_x = 0
         self.global_min_y = 0
-    
+
     def set_config(self, **kwargs):
         self.config.update(kwargs)
-    
+
     def get_udim2_from_element(self, item, prop_name):
         properties = item.find('Properties')
         if properties is None:
@@ -75,28 +75,28 @@ class RobloxConverter:
                     'yo': float(yo.text) if yo is not None and yo.text else 0
                 }
         return None
-    
+
     def calculate_global_bounds(self, root):
         positions = []
         sizes = []
-        
-        for item in root.findall('.//Item'):
+
+        for item in root.findall('Item'):
             pos = self.get_udim2_from_element(item, 'Position')
             size = self.get_udim2_from_element(item, 'Size')
             if pos:
                 positions.append(pos)
             if size:
                 sizes.append(size)
-        
+
         if not positions:
             return 0, 0, 400, 300
-        
+
         all_x = [p['xo'] for p in positions]
         all_y = [p['yo'] for p in positions]
-        
+
         min_x = min(all_x)
         min_y = min(all_y)
-        
+
         max_x = min_x
         max_y = min_y
         for i, pos in enumerate(positions):
@@ -107,19 +107,19 @@ class RobloxConverter:
                 max_x = right
             if bottom > max_y:
                 max_y = bottom
-        
+
         width = max_x - min_x
         height = max_y - min_y
-        
+
         return min_x, min_y, max(width, 10), max(height, 10)
-    
+
     def parse_property(self, prop_elem):
         prop_name = prop_elem.get('name')
         tag = prop_elem.tag
-        
+
         if tag == 'string':
             text = prop_elem.text or ""
-            text = text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '')
+            text = text.replace('\\', '\\\\').replace('"', '\"').replace('\n', '\\n').replace('\r', '')
             return prop_name, f'"{text}"'
         elif tag == 'bool':
             val = prop_elem.text or "false"
@@ -219,35 +219,35 @@ class RobloxConverter:
             if url_elem is not None and url_elem.text:
                 return prop_name, f'"{url_elem.text}"'
             elif prop_elem.text:
-                text = prop_elem.text.replace('\\', '\\\\').replace('"', '\\"')
+                text = prop_elem.text.replace('\\', '\\\\').replace('"', '\"')
                 return prop_name, f'"{text}"'
             return prop_name, '""'
         return prop_name, None
-    
+
     def convert_item(self, item, var_name, parent_var, apply_offset):
         class_name = item.get('class')
         if not class_name:
             return
-        
+
         self.lua_code.append(f'local {var_name} = Instance.new("{class_name}")')
-        
+
         properties = item.find('Properties')
         if properties is not None:
             pos_data = None
             size_data = None
-            
+
             for prop_elem in properties:
                 pname = prop_elem.get('name')
                 if pname == 'Position' and prop_elem.tag == 'UDim2':
                     pos_data = self.get_udim2_from_element(item, 'Position')
                 elif pname == 'Size' and prop_elem.tag == 'UDim2':
                     size_data = self.get_udim2_from_element(item, 'Size')
-            
+
             if size_data:
                 new_xo = int(size_data['xo'] * self.config['scale'])
                 new_yo = int(size_data['yo'] * self.config['scale'])
                 self.lua_code.append(f'{var_name}.Size = UDim2.new({size_data["xs"]}, {new_xo}, {size_data["ys"]}, {new_yo})')
-            
+
             if pos_data:
                 if apply_offset:
                     new_xo = int((pos_data['xo'] - self.global_min_x) * self.config['scale'])
@@ -256,7 +256,7 @@ class RobloxConverter:
                     new_xo = int(pos_data['xo'] * self.config['scale'])
                     new_yo = int(pos_data['yo'] * self.config['scale'])
                 self.lua_code.append(f'{var_name}.Position = UDim2.new({pos_data["xs"]}, {new_xo}, {pos_data["ys"]}, {new_yo})')
-            
+
             for prop_elem in properties:
                 pname = prop_elem.get('name')
                 if pname in ['Parent', 'Archivable', 'RobloxLocked', 'Position', 'Size']:
@@ -267,24 +267,20 @@ class RobloxConverter:
                         self.lua_code.append(f'{var_name}.{result[0]} = {result[1]}')
                 except Exception:
                     pass
-        
+
         if self.config['transparency'] is not None:
             if class_name in ['Frame', 'TextLabel', 'TextButton', 'ImageLabel', 'ImageButton']:
                 self.lua_code.append(f'{var_name}.BackgroundTransparency = {self.config["transparency"]}')
-        
+
         self.lua_code.append(f'{var_name}.Parent = {parent_var}')
         self.lua_code.append('')
-        
-        child_counter = 1
-        for child_item in item.findall('Item'):
-            child_var = f"{var_name}_{child_counter}"
-            self.convert_item(child_item, child_var, var_name, apply_offset=False)
-            child_counter += 1
-    
+
+
+
     def add_destroy_key(self):
         key_map = {
             'x': 'Enum.KeyCode.X',
-            'delete': 'Enum.KeyCode.Delete', 
+            'delete': 'Enum.KeyCode.Delete',
             'backspace': 'Enum.KeyCode.Backspace',
             'escape': 'Enum.KeyCode.Escape',
             'p': 'Enum.KeyCode.P',
@@ -295,11 +291,11 @@ class RobloxConverter:
         if key in key_map:
             self.lua_code.append(f"game:GetService('UserInputService').InputBegan:Connect(function(input, gp)")
             self.lua_code.append(f"\tif not gp and input.KeyCode == {key_map[key]} then")
-            self.lua_code.append(f"\t\tscreenGui:Destroy()")
+            self.lua_code.append(f"\t   screenGui:Destroy()")
             self.lua_code.append(f"\tend")
             self.lua_code.append(f"end)")
             self.lua_code.append("")
-    
+
     def add_draggable(self):
         self.lua_code.append("local UIS = game:GetService('UserInputService')")
         self.lua_code.append("local dragging, dragInput, dragStart, startPos")
@@ -314,7 +310,7 @@ class RobloxConverter:
         self.lua_code.append("\t\tstartPos = mainContainer.Position")
         self.lua_code.append("\t\tinput.Changed:Connect(function()")
         self.lua_code.append("\t\t\tif input.UserInputState == Enum.UserInputState.End then")
-        self.lua_code.append("\t\t\t\tdragging = false")
+        self.lua_code.append("\t\t\t    dragging = false")
         self.lua_code.append("\t\t\tend")
         self.lua_code.append("\t\tend)")
         self.lua_code.append("\tend")
@@ -326,25 +322,25 @@ class RobloxConverter:
         self.lua_code.append("end)")
         self.lua_code.append("UIS.InputChanged:Connect(function(input)")
         self.lua_code.append("\tif input == dragInput and dragging then")
-        self.lua_code.append("\t\tupdateDrag(input)")
+        self.lua_code.append("\t        updateDrag(input)")
         self.lua_code.append("\tend")
         self.lua_code.append("end)")
         self.lua_code.append("")
-    
+
     def convert_rbxmx(self, xml_content):
         try:
             root = ET.fromstring(xml_content)
         except ET.ParseError as e:
             return f"-- XML Parse Error: {str(e)}"
-        
+
         try:
             min_x, min_y, total_width, total_height = self.calculate_global_bounds(root)
             self.global_min_x = min_x
             self.global_min_y = min_y
-            
+
             container_w = int(total_width * self.config['scale'])
             container_h = int(total_height * self.config['scale'])
-            
+
             self.lua_code = []
             self.lua_code.append("local Players = game:GetService('Players')")
             self.lua_code.append("local player = Players.LocalPlayer")
@@ -356,13 +352,13 @@ class RobloxConverter:
             self.lua_code.append("screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling")
             self.lua_code.append("screenGui.Parent = playerGui")
             self.lua_code.append("")
-            
+
             self.lua_code.append("local mainContainer = Instance.new('Frame')")
             self.lua_code.append("mainContainer.Name = 'MainContainer'")
             self.lua_code.append(f"mainContainer.Size = UDim2.new(0, {container_w}, 0, {container_h})")
             self.lua_code.append("mainContainer.BackgroundTransparency = 1")
             self.lua_code.append("mainContainer.BorderSizePixel = 0")
-            
+
             pos = self.config['position']
             if pos == 'center':
                 self.lua_code.append("mainContainer.Position = UDim2.new(0.5, 0, 0.5, 0)")
@@ -393,74 +389,78 @@ class RobloxConverter:
                 self.lua_code.append("mainContainer.AnchorPoint = Vector2.new(1, 1)")
             elif pos == 'original':
                 self.lua_code.append(f"mainContainer.Position = UDim2.new(0, 0, 0, 0)")
-            
+
             self.lua_code.append("mainContainer.Parent = screenGui")
             self.lua_code.append("")
-            
+
+            all_items = root.findall('.//Item')
+            if not all_items:
+                return "-- Error: No GUI elements found in file"
+
             item_counter = 1
-            for item in root.findall('Item'):
+            for item in all_items:
                 var_name = f"element{item_counter}"
                 self.convert_item(item, var_name, "mainContainer", apply_offset=True)
                 item_counter += 1
-            
-            if item_counter == 1:
+
+            if not all_items:
                 return "-- Error: No GUI elements found in file"
-            
+
             if self.config['draggable']:
                 self.add_draggable()
-            
+
             if self.config['destroykey'] != 'none':
                 self.add_destroy_key()
-            
+
             return '\n'.join(self.lua_code)
-            
+
         except Exception as e:
             return f"-- Error: {str(e)}"
 
 converter = RobloxConverter()
 
-@bot.event
+ @bot.event
 async def on_ready():
     print(f'{bot.user} connected to Discord!')
 
-@bot.command(name='convert')
+ @bot.command(name='convert')
 async def convert_file(ctx, draggable: str = "false", position: str = "center", scale: float = 1.0, destroykey: str = "none", gui_name: str = "ConvertedGui", transparency: float = -1):
     if not ctx.message.attachments:
         await ctx.send("Please attach an RBXMX file!")
         return
-    
+
     attachment = ctx.message.attachments[0]
     if not attachment.filename.lower().endswith('.rbxmx'):
         await ctx.send("Please use .rbxmx format!")
         return
-    
+
     if attachment.size > 5000000:
         await ctx.send("File too large! Max 5MB.")
         return
-    
+
     try:
         file_content = await attachment.read()
         xml_string = file_content.decode('utf-8')
-        
+
         drag_bool = draggable.lower() == "true"
-        
+
         valid_positions = ['center', 'top', 'bottom', 'left', 'right', 'topleft', 'topright', 'bottomleft', 'bottomright', 'original']
         pos_value = position.lower() if position.lower() in valid_positions else 'center'
-        
+
         scale_value = scale if 0.1 <= scale <= 5.0 else 1.0
-        
+
         valid_keys = ['none', 'x', 'delete', 'backspace', 'escape', 'p', 'm', 'k']
         key_value = destroykey.lower() if destroykey.lower() in valid_keys else 'none'
-        
+
         name_value = gui_name.replace('_', ' ')
-        
+
         trans_value = transparency if 0.0 <= transparency <= 1.0 else None
-        
+
         status_msg = f"Converting: drag={drag_bool}, pos={pos_value}, scale={scale_value}x, key={key_value}, name={name_value}"
         if trans_value is not None:
             status_msg += f", trans={trans_value}"
         await ctx.send(status_msg)
-        
+
         converter.set_config(
             draggable=drag_bool,
             position=pos_value,
@@ -469,18 +469,18 @@ async def convert_file(ctx, draggable: str = "false", position: str = "center", 
             gui_name=name_value,
             transparency=trans_value
         )
-        
+
         lua_code = converter.convert_rbxmx(xml_string)
-        
+
         output_filename = attachment.filename.replace('.rbxmx', '').replace('.RBXMX', '') + '_converted.lua'
         lua_file = discord.File(io.BytesIO(lua_code.encode('utf-8')), filename=output_filename)
-        
+
         await ctx.send("Done!", file=lua_file)
-        
+
     except Exception as e:
         await ctx.send(f"Error: {str(e)}")
 
-@bot.command(name='chelp')
+ @bot.command(name='chelp')
 async def chelp(ctx):
     embed = discord.Embed(title="Bot Commands", color=discord.Color.green())
     embed.add_field(name="!convert", value="Convert RBXMX file to Lua", inline=False)
@@ -490,8 +490,8 @@ async def chelp(ctx):
     embed.add_field(name="!example", value="Show usage examples", inline=False)
     await ctx.send(embed=embed)
 
-@bot.command(name='cconfig')
-async def cconfig(ctx):
+ @bot.command(name='cconfig')
+def cconfig(ctx):
     embed = discord.Embed(title="Configuration Options", color=discord.Color.blue())
     embed.add_field(name="Usage", value="`!convert [drag] [pos] [scale] [key] [name] [trans]`", inline=False)
     embed.add_field(name="drag", value="true / false", inline=True)
