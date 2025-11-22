@@ -222,24 +222,16 @@ class SmartConverter:
         btn_stroke_thickness = int(btn_stroke_thickness * self.scale)
         
         num_buttons = len(self.buttons) if self.buttons else 9
+        if num_buttons < 9:
+            num_buttons = 9
         
         cols = 3
         rows = (num_buttons + cols - 1) // cols
         
         container_top = hh + 12
-        available_h = mh - container_top - 12
-        available_w = mw - 24
         
         pad_x = 20
         pad_y = 20
-        if cols > 1:
-            pad_x = (available_w - (btn_w * cols)) // (cols - 1)
-            if pad_x < 10:
-                pad_x = 10
-        if rows > 1:
-            pad_y = (available_h - (btn_h * rows)) // (rows - 1)
-            if pad_y < 10:
-                pad_y = 10
         
         self.w("local Players = game:GetService('Players')")
         self.w("local player = Players.LocalPlayer")
