@@ -393,18 +393,16 @@ class RobloxConverter:
             self.lua_code.append("mainContainer.Parent = screenGui")
             self.lua_code.append("")
 
-            all_items = root.findall('.//Item')
-            if not all_items:
+            item_counter = 1
+            top_level_items = root.findall('Item')
+            if not top_level_items:
                 return "-- Error: No GUI elements found in file"
 
-            item_counter = 1
-            for item in all_items:
+            for item in top_level_items:
                 var_name = f"element{item_counter}"
                 self.convert_item(item, var_name, "mainContainer", apply_offset=True)
                 item_counter += 1
 
-            if not all_items:
-                return "-- Error: No GUI elements found in file"
 
             if self.config['draggable']:
                 self.add_draggable()
