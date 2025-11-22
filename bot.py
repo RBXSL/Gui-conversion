@@ -24,73 +24,70 @@ async def start_web_server():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
 
-class UniversalConverter:
-    def __init__(self):
-        self.lines = []
-        self.config = {}
-        self.scale = 1.0
-        self.var_counter = 0
-        self.name_to_var = {}
-        
-        self.enums = {
-            'ApplyStrokeMode': {0: 'Contextual', 1: 'Border'},
-            'LineJoinMode': {0: 'Round', 1: 'Bevel', 2: 'Miter'},
-            'TextXAlignment': {0: 'Center', 1: 'Left', 2: 'Right'},
-            'TextYAlignment': {0: 'Center', 1: 'Top', 2: 'Bottom'},
-            'AutomaticSize': {0: 'None', 1: 'X', 2: 'Y', 3: 'XY'},
-            'ScaleType': {0: 'Stretch', 1: 'Slice', 2: 'Tile', 3: 'Fit', 4: 'Crop'},
-            'FillDirection': {0: 'Horizontal', 1: 'Vertical'},
-            'HorizontalAlignment': {0: 'Center', 1: 'Left', 2: 'Right'},
-            'VerticalAlignment': {0: 'Center', 1: 'Top', 2: 'Bottom'},
-            'SortOrder': {0: 'Name', 1: 'Custom', 2: 'LayoutOrder'},
-            'ResamplerMode': {0: 'Default', 1: 'Pixelated'},
-            'BorderMode': {0: 'Outline', 1: 'Middle', 2: 'Inset'},
-            'FontWeight': {100: 'Thin', 200: 'ExtraLight', 300: 'Light', 400: 'Regular', 
-                          500: 'Medium', 600: 'SemiBold', 700: 'Bold', 800: 'ExtraBold', 900: 'Heavy'},
-            'FontStyle': {'Normal': 'Normal', 'Italic': 'Italic'},
-            'ZIndexBehavior': {0: 'Global', 1: 'Sibling'},
-            'StartCorner': {0: 'TopLeft', 1: 'TopRight', 2: 'BottomLeft', 3: 'BottomRight'},
-        }
-        
-        self.ui_components = {
-            'UIStroke', 'UICorner', 'UIGradient', 'UIListLayout', 'UIGridLayout', 
-            'UIPadding', 'UIAspectRatioConstraint', 'UISizeConstraint', 'UIScale', 
-            'UITextSizeConstraint', 'UIFlexItem', 'UITableLayout', 'UIPageLayout'
-        }
-        
-        self.gui_elements = {
-            'Frame', 'TextLabel', 'TextButton', 'TextBox', 'ImageLabel', 
-            'ImageButton', 'ScrollingFrame', 'ViewportFrame', 'VideoFrame',
-            'CanvasGroup'
-        }
 
-    def set_config(self, **kw):
-        self.config = kw
-        self.scale = kw.get('scale', 1.0)
-
-    def w(self, line):
-        self.lines.append(line)
-
-    def get_var_name(self, name, cls):
-        """Generate a clean variable name"""
-        self.var_counter += 1
-        if name:
-            clean = re.sub(r'[^a-zA-Z0-9]', '', name)
-            if clean and not clean[0].isdigit():
-                return f"{clean.lower()}_{self.var_counter}"
-        return f"{cls.lower()}_{self.var_counter}"
-
-    def get_prop(self, props, name, tag):
-        """Generic property getter"""
+class RBXMLParser:
+    """Parses RBXMX XML and extracts properties"""
+    
+    @staticmethod
+    def get_prop(props, name, tag):
         if props is None:
             return None
         for p in props:
             if p.get('name') == name and p.tag == tag:
                 return p
         return None
-
-    def get_udim2(self, props, name):
-        p = self.get_prop(props, name, 'UDim2')
+    
+    @staticmethod
+    def get_string(props, name):
+        p = RBXMLParser.get_prop(props, name, 'string')
+        return p.text if p is not None and p.text else None
+    
+    @staticmethod
+    def get_bool(props, name):
+        p = RBXMLParser.get_prop(props, name, 'bool')
+        return p.text == 'true' if p is not None else None
+    
+    @staticmethod
+    def get_float(props, name):
+        p = RBXMLParser.get_prop(props, name, 'float')
+        if p is not None and p.text:
+            return float(p.text)
+        p = RBXMLParser.get_prop(props, name, 'double')
+        if p is not None and p.text:
+            return float(p.text)
+        return None
+    
+    @staticmethod
+    def get_int(props, name):
+        p = RBXMLParser.get_prop(props, name, 'int')
+        if p is not None and p.text:
+            return int(p.text)
+        return None
+    
+    @staticmethod
+    def get_token(props, name):
+        p = RBXMLParser.get_prop(props, name, 'token')
+        return int(p.text) if p is not None and p.text else None
+    
+    @staticmethod
+    def get_color3(props, name):
+        # Try Color3 format
+        p = RBXMLParser.get_prop(props, name, 'Color3')
+        if p is not None:
+            r = float(p.findtext('R') or 0)
+            g = float(p.findtext('G') or 0)
+            b = float(p.findtext('B') or 0)
+            return (r, g, b)
+        # Try Color3uint8 format
+        p = RBXMLParser.get_prop(props, name, 'Color3uint8')
+        if p is not None and p.text:
+            val = int(p.text)
+            return ((val >> 16 & 0xFF) / 255, (val >> 8 & 0xFF) / 255, (val & 0xFF) / 255)
+        return None
+    
+    @staticmethod
+    def get_udim2(props, name):
+        p = RBXMLParser.get_prop(props, name, 'UDim2')
         if p is not None:
             return {
                 'xs': float(p.findtext('XS') or 0),
@@ -99,88 +96,27 @@ class UniversalConverter:
                 'yo': float(p.findtext('YO') or 0)
             }
         return None
-
-    def get_udim(self, props, name):
-        p = self.get_prop(props, name, 'UDim')
+    
+    @staticmethod
+    def get_udim(props, name):
+        p = RBXMLParser.get_prop(props, name, 'UDim')
         if p is not None:
             return {
                 's': float(p.findtext('S') or 0),
                 'o': float(p.findtext('O') or 0)
             }
         return None
-
-    def get_color3(self, props, name):
-        p = self.get_prop(props, name, 'Color3')
+    
+    @staticmethod
+    def get_vector2(props, name):
+        p = RBXMLParser.get_prop(props, name, 'Vector2')
         if p is not None:
-            return {
-                'r': float(p.findtext('R') or 0),
-                'g': float(p.findtext('G') or 0),
-                'b': float(p.findtext('B') or 0)
-            }
+            return (float(p.findtext('X') or 0), float(p.findtext('Y') or 0))
         return None
-
-    def get_color3uint8(self, props, name):
-        """Handle Color3uint8 format"""
-        p = self.get_prop(props, name, 'Color3uint8')
-        if p is not None and p.text:
-            val = int(p.text)
-            r = ((val >> 16) & 0xFF) / 255
-            g = ((val >> 8) & 0xFF) / 255
-            b = (val & 0xFF) / 255
-            return {'r': r, 'g': g, 'b': b}
-        return None
-
-    def get_any_color3(self, props, name):
-        """Get color from either Color3 or Color3uint8"""
-        return self.get_color3(props, name) or self.get_color3uint8(props, name)
-
-    def get_str(self, props, name):
-        p = self.get_prop(props, name, 'string')
-        if p is not None:
-            return p.text or ''
-        return None
-
-    def get_float(self, props, name):
-        p = self.get_prop(props, name, 'float')
-        if p is not None:
-            return float(p.text or 0)
-        p = self.get_prop(props, name, 'double')
-        if p is not None:
-            return float(p.text or 0)
-        return None
-
-    def get_int(self, props, name):
-        p = self.get_prop(props, name, 'int')
-        if p is not None:
-            return int(p.text or 0)
-        p = self.get_prop(props, name, 'int64')
-        if p is not None:
-            return int(p.text or 0)
-        return None
-
-    def get_bool(self, props, name):
-        p = self.get_prop(props, name, 'bool')
-        if p is not None:
-            return p.text == 'true'
-        return None
-
-    def get_token(self, props, name):
-        p = self.get_prop(props, name, 'token')
-        if p is not None:
-            return int(p.text or 0)
-        return None
-
-    def get_vector2(self, props, name):
-        p = self.get_prop(props, name, 'Vector2')
-        if p is not None:
-            return {
-                'x': float(p.findtext('X') or 0),
-                'y': float(p.findtext('Y') or 0)
-            }
-        return None
-
-    def get_font(self, props, name):
-        p = self.get_prop(props, name, 'Font')
+    
+    @staticmethod
+    def get_font(props, name):
+        p = RBXMLParser.get_prop(props, name, 'Font')
         if p is not None:
             fam = p.find('Family')
             url = 'rbxasset://fonts/families/SourceSansPro.json'
@@ -188,574 +124,525 @@ class UniversalConverter:
                 u = fam.find('url')
                 if u is not None and u.text:
                     url = u.text
-            wgt = p.findtext('Weight') or '400'
-            sty = p.findtext('Style') or 'Normal'
-            return {'url': url, 'weight': int(wgt), 'style': sty}
+            weight = p.findtext('Weight') or '400'
+            style = p.findtext('Style') or 'Normal'
+            return {'url': url, 'weight': weight, 'style': style}
         return None
-
-    def get_content(self, props, name):
-        p = self.get_prop(props, name, 'Content')
+    
+    @staticmethod
+    def get_content(props, name):
+        p = RBXMLParser.get_prop(props, name, 'Content')
         if p is not None:
             u = p.find('url')
-            if u is not None and u.text and u.text not in ['undefined', 'null', '']:
+            if u is not None and u.text and u.text not in ['', 'undefined', 'null']:
                 return u.text
         return None
 
-    def get_colorsequence(self, props, name):
-        """Parse ColorSequence for gradients"""
-        p = self.get_prop(props, name, 'ColorSequence')
-        if p is None:
-            return None
-        keypoints = []
-        for kp in p.findall('Keypoint'):
-            time = float(kp.get('time', 0))
-            color_elem = kp.find('Color')
-            if color_elem is not None:
-                r = float(color_elem.findtext('R') or 0)
-                g = float(color_elem.findtext('G') or 0)
-                b = float(color_elem.findtext('B') or 0)
-                keypoints.append({'time': time, 'r': r, 'g': g, 'b': b})
-        return keypoints if keypoints else None
 
-    def get_numbersequence(self, props, name):
-        """Parse NumberSequence for gradients"""
-        p = self.get_prop(props, name, 'NumberSequence')
-        if p is None:
-            return None
-        keypoints = []
-        for kp in p.findall('Keypoint'):
-            time = float(kp.get('time', 0))
-            value = float(kp.get('value', 0))
-            envelope = float(kp.get('envelope', 0))
-            keypoints.append({'time': time, 'value': value, 'envelope': envelope})
-        return keypoints if keypoints else None
-
-    def enum_str(self, enum_type, val):
-        mapping = self.enums.get(enum_type, {})
-        enum_val = mapping.get(val, str(val))
-        return f"Enum.{enum_type}.{enum_val}"
-
-    def scale_offset(self, offset):
-        """Apply scale to pixel offsets"""
-        return int(offset * self.scale)
-
-    def format_udim2(self, udim2, scale_offsets=True):
-        xs, xo, ys, yo = udim2['xs'], udim2['xo'], udim2['ys'], udim2['yo']
-        if scale_offsets:
-            xo = self.scale_offset(xo)
-            yo = self.scale_offset(yo)
+class LuaCodeGenerator:
+    """Generates clean Lua code in the target style"""
+    
+    WEIGHT_MAP = {
+        '100': 'Thin', '200': 'ExtraLight', '300': 'Light', '400': 'Regular',
+        '500': 'Medium', '600': 'SemiBold', '700': 'Bold', '800': 'ExtraBold', '900': 'Heavy'
+    }
+    
+    def __init__(self, scale=1.0):
+        self.scale = scale
+        self.lines = []
+        self.indent = 0
+        self.var_counter = 0
+        self.used_names = set()
+    
+    def w(self, line=''):
+        self.lines.append('\t' * self.indent + line)
+    
+    def get_output(self):
+        return '\n'.join(self.lines)
+    
+    def make_var_name(self, name, cls):
+        """Create a clean variable name"""
+        if name:
+            # Clean the name for use as variable
+            clean = re.sub(r'[^a-zA-Z0-9]', '', name)
+            if clean and not clean[0].isdigit():
+                base = clean[0].lower() + clean[1:] if clean else cls.lower()
+            else:
+                base = cls.lower()
         else:
-            xo = int(xo)
-            yo = int(yo)
-        return f"UDim2.new({xs}, {xo}, {ys}, {yo})"
-
-    def format_udim(self, udim, scale_offset=True):
-        s, o = udim['s'], udim['o']
-        if scale_offset:
-            o = self.scale_offset(o)
-        else:
-            o = int(o)
-        return f"UDim.new({s}, {o})"
-
-    def format_color3(self, color):
-        return f"Color3.new({color['r']}, {color['g']}, {color['b']})"
-
-    def format_vector2(self, vec):
-        return f"Vector2.new({vec['x']}, {vec['y']})"
-
-    def escape_str(self, s):
-        if s is None:
-            return ""
+            base = cls.lower()
+        
+        # Ensure uniqueness
+        var = base
+        counter = 1
+        while var in self.used_names:
+            var = f"{base}{counter}"
+            counter += 1
+        self.used_names.add(var)
+        return var
+    
+    def scale_int(self, val):
+        return int(val * self.scale)
+    
+    def fmt_color3(self, color):
+        return f"Color3.new({round(color[0], 6)}, {round(color[1], 6)}, {round(color[2], 6)})"
+    
+    def fmt_udim2(self, u, scale_offsets=True):
+        xo = self.scale_int(u['xo']) if scale_offsets else int(u['xo'])
+        yo = self.scale_int(u['yo']) if scale_offsets else int(u['yo'])
+        return f"UDim2.new({u['xs']}, {xo}, {u['ys']}, {yo})"
+    
+    def fmt_udim(self, u, scale_offset=True):
+        o = self.scale_int(u['o']) if scale_offset else int(u['o'])
+        return f"UDim.new({u['s']}, {o})"
+    
+    def escape_string(self, s):
+        if not s:
+            return ''
         return s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '')
 
-    def write_common_props(self, var, props, cls, zindex):
-        """Write properties common to all GUI elements"""
-        name = self.get_str(props, 'Name')
+
+class UniversalConverter:
+    """Main converter class that produces clean Lua output"""
+    
+    # Token to Enum mappings
+    ENUMS = {
+        'TextXAlignment': {0: 'Center', 1: 'Left', 2: 'Right'},
+        'TextYAlignment': {0: 'Center', 1: 'Top', 2: 'Bottom'},
+        'SortOrder': {0: 'Name', 1: 'Custom', 2: 'LayoutOrder'},
+        'FillDirection': {0: 'Horizontal', 1: 'Vertical'},
+        'HorizontalAlignment': {0: 'Center', 1: 'Left', 2: 'Right'},
+        'VerticalAlignment': {0: 'Center', 1: 'Top', 2: 'Bottom'},
+        'AutomaticSize': {0: 'None', 1: 'X', 2: 'Y', 3: 'XY'},
+        'ScaleType': {0: 'Stretch', 1: 'Slice', 2: 'Tile', 3: 'Fit', 4: 'Crop'},
+        'ApplyStrokeMode': {0: 'Contextual', 1: 'Border'},
+        'LineJoinMode': {0: 'Round', 1: 'Bevel', 2: 'Miter'},
+        'StartCorner': {0: 'TopLeft', 1: 'TopRight', 2: 'BottomLeft', 3: 'BottomRight'},
+    }
+    
+    UI_COMPONENTS = {'UIStroke', 'UICorner', 'UIGradient', 'UIListLayout', 'UIGridLayout', 
+                     'UIPadding', 'UIAspectRatioConstraint', 'UISizeConstraint', 'UIScale'}
+    
+    def __init__(self):
+        self.config = {}
+        self.parser = RBXMLParser()
+        self.gen = None
+        self.zindex = 0
+    
+    def set_config(self, **kwargs):
+        self.config = kwargs
+    
+    def enum_val(self, enum_type, token):
+        return self.ENUMS.get(enum_type, {}).get(token, str(token))
+    
+    def write_frame(self, var, props, parent, is_top_level=False):
+        """Write a Frame element"""
+        g = self.gen
+        p = self.parser
+        
+        name = p.get_string(props, 'Name')
         if name:
-            self.w(f'{var}.Name = "{self.escape_str(name)}"')
-
-        if cls not in self.ui_components:
-            size = self.get_udim2(props, 'Size')
-            if size:
-                self.w(f"{var}.Size = {self.format_udim2(size)}")
-
-            pos = self.get_udim2(props, 'Position')
-            if pos:
-                self.w(f"{var}.Position = {self.format_udim2(pos)}")
-
-            anchor = self.get_vector2(props, 'AnchorPoint')
-            if anchor:
-                self.w(f"{var}.AnchorPoint = {self.format_vector2(anchor)}")
-
-            rotation = self.get_float(props, 'Rotation')
-            if rotation is not None and rotation != 0:
-                self.w(f"{var}.Rotation = {rotation}")
-
-            self.w(f"{var}.ZIndex = {zindex}")
-
-        bg_color = self.get_any_color3(props, 'BackgroundColor3')
+            g.w(f'{var}.Name = "{g.escape_string(name)}"')
+        
+        size = p.get_udim2(props, 'Size')
+        if size:
+            g.w(f'{var}.Size = {g.fmt_udim2(size)}')
+        
+        pos = p.get_udim2(props, 'Position')
+        if pos:
+            g.w(f'{var}.Position = {g.fmt_udim2(pos)}')
+        
+        anchor = p.get_vector2(props, 'AnchorPoint')
+        if anchor and (anchor[0] != 0 or anchor[1] != 0):
+            g.w(f'{var}.AnchorPoint = Vector2.new({anchor[0]}, {anchor[1]})')
+        
+        bg_color = p.get_color3(props, 'BackgroundColor3')
         if bg_color:
-            self.w(f"{var}.BackgroundColor3 = {self.format_color3(bg_color)}")
-
-        bg_trans = self.get_float(props, 'BackgroundTransparency')
+            g.w(f'{var}.BackgroundColor3 = {g.fmt_color3(bg_color)}')
+        
+        bg_trans = p.get_float(props, 'BackgroundTransparency')
         if bg_trans is not None:
-            self.w(f"{var}.BackgroundTransparency = {bg_trans}")
-
-        border = self.get_int(props, 'BorderSizePixel')
+            g.w(f'{var}.BackgroundTransparency = {bg_trans}')
+        
+        border = p.get_int(props, 'BorderSizePixel')
         if border is not None:
-            self.w(f"{var}.BorderSizePixel = {border}")
-
-        border_color = self.get_any_color3(props, 'BorderColor3')
-        if border_color and (border is None or border > 0):
-            self.w(f"{var}.BorderColor3 = {self.format_color3(border_color)}")
-
-        visible = self.get_bool(props, 'Visible')
-        if visible is not None and not visible:
-            self.w(f"{var}.Visible = false")
-
-        clip = self.get_bool(props, 'ClipsDescendants')
-        if clip is not None and clip:
-            self.w(f"{var}.ClipsDescendants = true")
-
-        auto_size = self.get_token(props, 'AutomaticSize')
-        if auto_size is not None and auto_size != 0:
-            self.w(f"{var}.AutomaticSize = {self.enum_str('AutomaticSize', auto_size)}")
-
-        layout_order = self.get_int(props, 'LayoutOrder')
+            g.w(f'{var}.BorderSizePixel = {border}')
+        
+        clip = p.get_bool(props, 'ClipsDescendants')
+        if clip:
+            g.w(f'{var}.ClipsDescendants = true')
+        
+        visible = p.get_bool(props, 'Visible')
+        if visible is False:
+            g.w(f'{var}.Visible = false')
+        
+        layout_order = p.get_int(props, 'LayoutOrder')
         if layout_order is not None and layout_order != 0:
-            self.w(f"{var}.LayoutOrder = {layout_order}")
-
-    def write_text_props(self, var, props):
-        """Write text-specific properties"""
-        text = self.get_str(props, 'Text')
+            g.w(f'{var}.LayoutOrder = {layout_order}')
+        
+        self.zindex += 1
+        g.w(f'{var}.ZIndex = {self.zindex}')
+        g.w(f'{var}.Parent = {parent}')
+    
+    def write_text_element(self, var, props, parent, cls):
+        """Write TextLabel, TextButton, or TextBox"""
+        g = self.gen
+        p = self.parser
+        
+        name = p.get_string(props, 'Name')
+        if name:
+            g.w(f'{var}.Name = "{g.escape_string(name)}"')
+        
+        size = p.get_udim2(props, 'Size')
+        if size:
+            g.w(f'{var}.Size = {g.fmt_udim2(size)}')
+        
+        pos = p.get_udim2(props, 'Position')
+        if pos:
+            g.w(f'{var}.Position = {g.fmt_udim2(pos)}')
+        
+        anchor = p.get_vector2(props, 'AnchorPoint')
+        if anchor and (anchor[0] != 0 or anchor[1] != 0):
+            g.w(f'{var}.AnchorPoint = Vector2.new({anchor[0]}, {anchor[1]})')
+        
+        bg_trans = p.get_float(props, 'BackgroundTransparency')
+        if bg_trans is not None:
+            g.w(f'{var}.BackgroundTransparency = {bg_trans}')
+        
+        bg_color = p.get_color3(props, 'BackgroundColor3')
+        if bg_color and bg_trans != 1:
+            g.w(f'{var}.BackgroundColor3 = {g.fmt_color3(bg_color)}')
+        
+        border = p.get_int(props, 'BorderSizePixel')
+        if border is not None:
+            g.w(f'{var}.BorderSizePixel = {border}')
+        
+        text = p.get_string(props, 'Text')
         if text is not None:
-            self.w(f'{var}.Text = "{self.escape_str(text)}"')
-
-        text_color = self.get_any_color3(props, 'TextColor3')
+            g.w(f'{var}.Text = "{g.escape_string(text)}"')
+        
+        text_color = p.get_color3(props, 'TextColor3')
         if text_color:
-            self.w(f"{var}.TextColor3 = {self.format_color3(text_color)}")
-
-        text_trans = self.get_float(props, 'TextTransparency')
-        if text_trans is not None and text_trans != 0:
-            self.w(f"{var}.TextTransparency = {text_trans}")
-
-        text_size = self.get_int(props, 'TextSize')
-        if text_size is not None:
-            self.w(f"{var}.TextSize = {self.scale_offset(text_size)}")
-
-        text_scaled = self.get_bool(props, 'TextScaled')
-        if text_scaled:
-            self.w(f"{var}.TextScaled = true")
-
-        text_wrapped = self.get_bool(props, 'TextWrapped')
-        if text_wrapped:
-            self.w(f"{var}.TextWrapped = true")
-
-        text_x = self.get_token(props, 'TextXAlignment')
-        if text_x is not None:
-            self.w(f"{var}.TextXAlignment = {self.enum_str('TextXAlignment', text_x)}")
-
-        text_y = self.get_token(props, 'TextYAlignment')
-        if text_y is not None:
-            self.w(f"{var}.TextYAlignment = {self.enum_str('TextYAlignment', text_y)}")
-
-        rich_text = self.get_bool(props, 'RichText')
-        if rich_text:
-            self.w(f"{var}.RichText = true")
-
-        font = self.get_font(props, 'FontFace')
+            g.w(f'{var}.TextColor3 = {g.fmt_color3(text_color)}')
+        
+        text_size = p.get_int(props, 'TextSize')
+        if text_size:
+            g.w(f'{var}.TextSize = {g.scale_int(text_size)}')
+        
+        font = p.get_font(props, 'FontFace')
         if font:
-            weight = self.enums['FontWeight'].get(font['weight'], 'Regular')
-            style = font['style']
-            self.w(f'{var}.FontFace = Font.new("{font["url"]}", Enum.FontWeight.{weight}, Enum.FontStyle.{style})')
-
-        max_visible = self.get_int(props, 'MaxVisibleGraphemes')
-        if max_visible is not None and max_visible != -1:
-            self.w(f"{var}.MaxVisibleGraphemes = {max_visible}")
-
-        line_height = self.get_float(props, 'LineHeight')
-        if line_height is not None and line_height != 1:
-            self.w(f"{var}.LineHeight = {line_height}")
-
-    def write_image_props(self, var, props):
-        """Write image-specific properties"""
-        image = self.get_content(props, 'Image')
+            weight = g.WEIGHT_MAP.get(font['weight'], 'Regular')
+            g.w(f'{var}.FontFace = Font.new("{font["url"]}", Enum.FontWeight.{weight}, Enum.FontStyle.{font["style"]})')
+        
+        text_x = p.get_token(props, 'TextXAlignment')
+        if text_x is not None:
+            g.w(f'{var}.TextXAlignment = Enum.TextXAlignment.{self.enum_val("TextXAlignment", text_x)}')
+        
+        text_y = p.get_token(props, 'TextYAlignment')
+        if text_y is not None:
+            g.w(f'{var}.TextYAlignment = Enum.TextYAlignment.{self.enum_val("TextYAlignment", text_y)}')
+        
+        text_wrapped = p.get_bool(props, 'TextWrapped')
+        if text_wrapped:
+            g.w(f'{var}.TextWrapped = true')
+        
+        text_scaled = p.get_bool(props, 'TextScaled')
+        if text_scaled:
+            g.w(f'{var}.TextScaled = true')
+        
+        text_trans = p.get_float(props, 'TextTransparency')
+        if text_trans is not None and text_trans != 0:
+            g.w(f'{var}.TextTransparency = {text_trans}')
+        
+        rich = p.get_bool(props, 'RichText')
+        if rich:
+            g.w(f'{var}.RichText = true')
+        
+        # TextBox specific
+        if cls == 'TextBox':
+            placeholder = p.get_string(props, 'PlaceholderText')
+            if placeholder:
+                g.w(f'{var}.PlaceholderText = "{g.escape_string(placeholder)}"')
+            clear = p.get_bool(props, 'ClearTextOnFocus')
+            if clear is False:
+                g.w(f'{var}.ClearTextOnFocus = false')
+        
+        # Button specific
+        if cls in ['TextButton', 'ImageButton']:
+            auto_color = p.get_bool(props, 'AutoButtonColor')
+            if auto_color is False:
+                g.w(f'{var}.AutoButtonColor = false')
+        
+        self.zindex += 1
+        g.w(f'{var}.ZIndex = {self.zindex}')
+        g.w(f'{var}.Parent = {parent}')
+    
+    def write_image_element(self, var, props, parent, cls):
+        """Write ImageLabel or ImageButton"""
+        g = self.gen
+        p = self.parser
+        
+        name = p.get_string(props, 'Name')
+        if name:
+            g.w(f'{var}.Name = "{g.escape_string(name)}"')
+        
+        size = p.get_udim2(props, 'Size')
+        if size:
+            g.w(f'{var}.Size = {g.fmt_udim2(size)}')
+        
+        pos = p.get_udim2(props, 'Position')
+        if pos:
+            g.w(f'{var}.Position = {g.fmt_udim2(pos)}')
+        
+        anchor = p.get_vector2(props, 'AnchorPoint')
+        if anchor and (anchor[0] != 0 or anchor[1] != 0):
+            g.w(f'{var}.AnchorPoint = Vector2.new({anchor[0]}, {anchor[1]})')
+        
+        bg_color = p.get_color3(props, 'BackgroundColor3')
+        if bg_color:
+            g.w(f'{var}.BackgroundColor3 = {g.fmt_color3(bg_color)}')
+        
+        bg_trans = p.get_float(props, 'BackgroundTransparency')
+        if bg_trans is not None:
+            g.w(f'{var}.BackgroundTransparency = {bg_trans}')
+        
+        border = p.get_int(props, 'BorderSizePixel')
+        if border is not None:
+            g.w(f'{var}.BorderSizePixel = {border}')
+        
+        image = p.get_content(props, 'Image')
         if image:
-            self.w(f'{var}.Image = "{image}"')
-
-        image_trans = self.get_float(props, 'ImageTransparency')
-        if image_trans is not None and image_trans != 0:
-            self.w(f"{var}.ImageTransparency = {image_trans}")
-
-        image_color = self.get_any_color3(props, 'ImageColor3')
+            g.w(f'{var}.Image = "{image}"')
+        
+        image_color = p.get_color3(props, 'ImageColor3')
         if image_color:
-            self.w(f"{var}.ImageColor3 = {self.format_color3(image_color)}")
-
-        scale_type = self.get_token(props, 'ScaleType')
+            g.w(f'{var}.ImageColor3 = {g.fmt_color3(image_color)}')
+        
+        image_trans = p.get_float(props, 'ImageTransparency')
+        if image_trans is not None and image_trans != 0:
+            g.w(f'{var}.ImageTransparency = {image_trans}')
+        
+        scale_type = p.get_token(props, 'ScaleType')
         if scale_type is not None and scale_type != 0:
-            self.w(f"{var}.ScaleType = {self.enum_str('ScaleType', scale_type)}")
-
-        slice_center = self.get_prop(props, 'SliceCenter', 'Rect')
-        if slice_center is not None:
-            min_x = int(float(slice_center.findtext('min/X') or 0))
-            min_y = int(float(slice_center.findtext('min/Y') or 0))
-            max_x = int(float(slice_center.findtext('max/X') or 0))
-            max_y = int(float(slice_center.findtext('max/Y') or 0))
-            self.w(f"{var}.SliceCenter = Rect.new({min_x}, {min_y}, {max_x}, {max_y})")
-
-        slice_scale = self.get_float(props, 'SliceScale')
-        if slice_scale is not None and slice_scale != 1:
-            self.w(f"{var}.SliceScale = {slice_scale}")
-
-        tile_size = self.get_udim2(props, 'TileSize')
-        if tile_size:
-            self.w(f"{var}.TileSize = {self.format_udim2(tile_size)}")
-
-        resampler = self.get_token(props, 'ResamplerMode')
-        if resampler is not None and resampler != 0:
-            self.w(f"{var}.ResamplerMode = {self.enum_str('ResamplerMode', resampler)}")
-
-    def write_scrolling_props(self, var, props):
-        """Write scrolling frame specific properties"""
-        canvas_size = self.get_udim2(props, 'CanvasSize')
-        if canvas_size:
-            self.w(f"{var}.CanvasSize = {self.format_udim2(canvas_size)}")
-
-        canvas_pos = self.get_vector2(props, 'CanvasPosition')
-        if canvas_pos:
-            self.w(f"{var}.CanvasPosition = {self.format_vector2(canvas_pos)}")
-
-        scroll_bar_thick = self.get_int(props, 'ScrollBarThickness')
-        if scroll_bar_thick is not None:
-            self.w(f"{var}.ScrollBarThickness = {self.scale_offset(scroll_bar_thick)}")
-
-        scroll_bar_color = self.get_any_color3(props, 'ScrollBarImageColor3')
-        if scroll_bar_color:
-            self.w(f"{var}.ScrollBarImageColor3 = {self.format_color3(scroll_bar_color)}")
-
-        scroll_bar_trans = self.get_float(props, 'ScrollBarImageTransparency')
-        if scroll_bar_trans is not None:
-            self.w(f"{var}.ScrollBarImageTransparency = {scroll_bar_trans}")
-
-        elastic = self.get_token(props, 'ElasticBehavior')
-        if elastic is not None:
-            elastic_map = {0: 'WhenScrollable', 1: 'Always', 2: 'Never'}
-            self.w(f"{var}.ElasticBehavior = Enum.ElasticBehavior.{elastic_map.get(elastic, 'WhenScrollable')}")
-
-        scroll_enabled = self.get_bool(props, 'ScrollingEnabled')
-        if scroll_enabled is not None and not scroll_enabled:
-            self.w(f"{var}.ScrollingEnabled = false")
-
-    def write_ui_stroke(self, var, props):
-        """Write UIStroke properties"""
-        color = self.get_any_color3(props, 'Color')
+            g.w(f'{var}.ScaleType = Enum.ScaleType.{self.enum_val("ScaleType", scale_type)}')
+        
+        if cls == 'ImageButton':
+            auto_color = p.get_bool(props, 'AutoButtonColor')
+            if auto_color is False:
+                g.w(f'{var}.AutoButtonColor = false')
+        
+        self.zindex += 1
+        g.w(f'{var}.ZIndex = {self.zindex}')
+        g.w(f'{var}.Parent = {parent}')
+    
+    def write_scrolling_frame(self, var, props, parent):
+        """Write ScrollingFrame"""
+        g = self.gen
+        p = self.parser
+        
+        name = p.get_string(props, 'Name')
+        if name:
+            g.w(f'{var}.Name = "{g.escape_string(name)}"')
+        
+        size = p.get_udim2(props, 'Size')
+        if size:
+            g.w(f'{var}.Size = {g.fmt_udim2(size)}')
+        
+        pos = p.get_udim2(props, 'Position')
+        if pos:
+            g.w(f'{var}.Position = {g.fmt_udim2(pos)}')
+        
+        bg_trans = p.get_float(props, 'BackgroundTransparency')
+        if bg_trans is not None:
+            g.w(f'{var}.BackgroundTransparency = {bg_trans}')
+        
+        border = p.get_int(props, 'BorderSizePixel')
+        if border is not None:
+            g.w(f'{var}.BorderSizePixel = {border}')
+        
+        canvas = p.get_udim2(props, 'CanvasSize')
+        if canvas:
+            g.w(f'{var}.CanvasSize = {g.fmt_udim2(canvas)}')
+        
+        scroll_thick = p.get_int(props, 'ScrollBarThickness')
+        if scroll_thick is not None:
+            g.w(f'{var}.ScrollBarThickness = {g.scale_int(scroll_thick)}')
+        
+        self.zindex += 1
+        g.w(f'{var}.ZIndex = {self.zindex}')
+        g.w(f'{var}.Parent = {parent}')
+    
+    def write_ui_stroke(self, var, props, parent):
+        """Write UIStroke component"""
+        g = self.gen
+        p = self.parser
+        
+        color = p.get_color3(props, 'Color')
         if color:
-            self.w(f"{var}.Color = {self.format_color3(color)}")
-
-        trans = self.get_float(props, 'Transparency')
-        if trans is not None and trans != 0:
-            self.w(f"{var}.Transparency = {trans}")
-
-        thickness = self.get_float(props, 'Thickness')
+            g.w(f'{var}.Color = {g.fmt_color3(color)}')
+        
+        thickness = p.get_float(props, 'Thickness')
         if thickness is not None:
-            self.w(f"{var}.Thickness = {thickness * self.scale}")
-
-        apply_mode = self.get_token(props, 'ApplyStrokeMode')
-        if apply_mode is not None:
-            self.w(f"{var}.ApplyStrokeMode = {self.enum_str('ApplyStrokeMode', apply_mode)}")
-
-        line_join = self.get_token(props, 'LineJoinMode')
-        if line_join is not None:
-            self.w(f"{var}.LineJoinMode = {self.enum_str('LineJoinMode', line_join)}")
-
-        enabled = self.get_bool(props, 'Enabled')
-        if enabled is not None and not enabled:
-            self.w(f"{var}.Enabled = false")
-
-    def write_ui_corner(self, var, props):
-        """Write UICorner properties"""
-        corner = self.get_udim(props, 'CornerRadius')
-        if corner:
-            self.w(f"{var}.CornerRadius = {self.format_udim(corner)}")
-
-    def write_ui_gradient(self, var, props):
-        """Write UIGradient properties"""
-        color_seq = self.get_colorsequence(props, 'Color')
-        if color_seq:
-            keypoints = ', '.join([
-                f"ColorSequenceKeypoint.new({kp['time']}, Color3.new({kp['r']}, {kp['g']}, {kp['b']}))"
-                for kp in color_seq
-            ])
-            self.w(f"{var}.Color = ColorSequence.new({{{keypoints}}})")
-
-        trans_seq = self.get_numbersequence(props, 'Transparency')
-        if trans_seq:
-            keypoints = ', '.join([
-                f"NumberSequenceKeypoint.new({kp['time']}, {kp['value']})"
-                for kp in trans_seq
-            ])
-            self.w(f"{var}.Transparency = NumberSequence.new({{{keypoints}}})")
-
-        rotation = self.get_float(props, 'Rotation')
-        if rotation is not None and rotation != 0:
-            self.w(f"{var}.Rotation = {rotation}")
-
-        offset = self.get_vector2(props, 'Offset')
-        if offset:
-            self.w(f"{var}.Offset = {self.format_vector2(offset)}")
-
-        enabled = self.get_bool(props, 'Enabled')
-        if enabled is not None and not enabled:
-            self.w(f"{var}.Enabled = false")
-
-    def write_ui_list_layout(self, var, props):
-        """Write UIListLayout properties"""
-        fill_dir = self.get_token(props, 'FillDirection')
-        if fill_dir is not None:
-            self.w(f"{var}.FillDirection = {self.enum_str('FillDirection', fill_dir)}")
-
-        h_align = self.get_token(props, 'HorizontalAlignment')
-        if h_align is not None:
-            self.w(f"{var}.HorizontalAlignment = {self.enum_str('HorizontalAlignment', h_align)}")
-
-        v_align = self.get_token(props, 'VerticalAlignment')
-        if v_align is not None:
-            self.w(f"{var}.VerticalAlignment = {self.enum_str('VerticalAlignment', v_align)}")
-
-        sort_order = self.get_token(props, 'SortOrder')
-        if sort_order is not None:
-            self.w(f"{var}.SortOrder = {self.enum_str('SortOrder', sort_order)}")
-
-        padding = self.get_udim(props, 'Padding')
+            g.w(f'{var}.Thickness = {thickness * self.gen.scale}')
+        
+        trans = p.get_float(props, 'Transparency')
+        if trans is not None and trans != 0:
+            g.w(f'{var}.Transparency = {trans}')
+        
+        apply_mode = p.get_token(props, 'ApplyStrokeMode')
+        if apply_mode is not None and apply_mode != 0:
+            g.w(f'{var}.ApplyStrokeMode = Enum.ApplyStrokeMode.{self.enum_val("ApplyStrokeMode", apply_mode)}')
+        
+        line_join = p.get_token(props, 'LineJoinMode')
+        if line_join is not None and line_join != 0:
+            g.w(f'{var}.LineJoinMode = Enum.LineJoinMode.{self.enum_val("LineJoinMode", line_join)}')
+        
+        g.w(f'{var}.Parent = {parent}')
+    
+    def write_ui_corner(self, var, props, parent):
+        """Write UICorner component"""
+        g = self.gen
+        p = self.parser
+        
+        radius = p.get_udim(props, 'CornerRadius')
+        if radius:
+            g.w(f'{var}.CornerRadius = {g.fmt_udim(radius)}')
+        
+        g.w(f'{var}.Parent = {parent}')
+    
+    def write_ui_list_layout(self, var, props, parent):
+        """Write UIListLayout component"""
+        g = self.gen
+        p = self.parser
+        
+        fill_dir = p.get_token(props, 'FillDirection')
+        if fill_dir is not None and fill_dir != 0:
+            g.w(f'{var}.FillDirection = Enum.FillDirection.{self.enum_val("FillDirection", fill_dir)}')
+        
+        h_align = p.get_token(props, 'HorizontalAlignment')
+        if h_align is not None and h_align != 0:
+            g.w(f'{var}.HorizontalAlignment = Enum.HorizontalAlignment.{self.enum_val("HorizontalAlignment", h_align)}')
+        
+        v_align = p.get_token(props, 'VerticalAlignment')
+        if v_align is not None and v_align != 0:
+            g.w(f'{var}.VerticalAlignment = Enum.VerticalAlignment.{self.enum_val("VerticalAlignment", v_align)}')
+        
+        sort = p.get_token(props, 'SortOrder')
+        if sort is not None:
+            g.w(f'{var}.SortOrder = Enum.SortOrder.{self.enum_val("SortOrder", sort)}')
+        
+        padding = p.get_udim(props, 'Padding')
         if padding:
-            self.w(f"{var}.Padding = {self.format_udim(padding)}")
-
-        wraps = self.get_bool(props, 'Wraps')
-        if wraps:
-            self.w(f"{var}.Wraps = true")
-
-    def write_ui_grid_layout(self, var, props):
-        """Write UIGridLayout properties"""
-        cell_size = self.get_udim2(props, 'CellSize')
+            g.w(f'{var}.Padding = {g.fmt_udim(padding)}')
+        
+        g.w(f'{var}.Parent = {parent}')
+    
+    def write_ui_grid_layout(self, var, props, parent):
+        """Write UIGridLayout component"""
+        g = self.gen
+        p = self.parser
+        
+        cell_size = p.get_udim2(props, 'CellSize')
         if cell_size:
-            self.w(f"{var}.CellSize = {self.format_udim2(cell_size)}")
-
-        cell_padding = self.get_udim2(props, 'CellPadding')
+            g.w(f'{var}.CellSize = {g.fmt_udim2(cell_size)}')
+        
+        cell_padding = p.get_udim2(props, 'CellPadding')
         if cell_padding:
-            self.w(f"{var}.CellPadding = {self.format_udim2(cell_padding)}")
-
-        fill_dir = self.get_token(props, 'FillDirection')
-        if fill_dir is not None:
-            self.w(f"{var}.FillDirection = {self.enum_str('FillDirection', fill_dir)}")
-
-        h_align = self.get_token(props, 'HorizontalAlignment')
-        if h_align is not None:
-            self.w(f"{var}.HorizontalAlignment = {self.enum_str('HorizontalAlignment', h_align)}")
-
-        v_align = self.get_token(props, 'VerticalAlignment')
-        if v_align is not None:
-            self.w(f"{var}.VerticalAlignment = {self.enum_str('VerticalAlignment', v_align)}")
-
-        sort_order = self.get_token(props, 'SortOrder')
-        if sort_order is not None:
-            self.w(f"{var}.SortOrder = {self.enum_str('SortOrder', sort_order)}")
-
-        start_corner = self.get_token(props, 'StartCorner')
-        if start_corner is not None:
-            self.w(f"{var}.StartCorner = {self.enum_str('StartCorner', start_corner)}")
-
-        rows = self.get_int(props, 'FillDirectionMaxCells')
-        if rows is not None and rows != 0:
-            self.w(f"{var}.FillDirectionMaxCells = {rows}")
-
-    def write_ui_padding(self, var, props):
-        """Write UIPadding properties"""
+            g.w(f'{var}.CellPadding = {g.fmt_udim2(cell_padding)}')
+        
+        sort = p.get_token(props, 'SortOrder')
+        if sort is not None:
+            g.w(f'{var}.SortOrder = Enum.SortOrder.{self.enum_val("SortOrder", sort)}')
+        
+        fill_dir = p.get_token(props, 'FillDirection')
+        if fill_dir is not None and fill_dir != 0:
+            g.w(f'{var}.FillDirection = Enum.FillDirection.{self.enum_val("FillDirection", fill_dir)}')
+        
+        start_corner = p.get_token(props, 'StartCorner')
+        if start_corner is not None and start_corner != 0:
+            g.w(f'{var}.StartCorner = Enum.StartCorner.{self.enum_val("StartCorner", start_corner)}')
+        
+        g.w(f'{var}.Parent = {parent}')
+    
+    def write_ui_padding(self, var, props, parent):
+        """Write UIPadding component"""
+        g = self.gen
+        p = self.parser
+        
         for side in ['Left', 'Right', 'Top', 'Bottom']:
-            padding = self.get_udim(props, f'Padding{side}')
-            if padding:
-                self.w(f"{var}.Padding{side} = {self.format_udim(padding)}")
-
-    def write_ui_aspect_ratio(self, var, props):
-        """Write UIAspectRatioConstraint properties"""
-        ratio = self.get_float(props, 'AspectRatio')
-        if ratio is not None:
-            self.w(f"{var}.AspectRatio = {ratio}")
-
-        aspect_type = self.get_token(props, 'AspectType')
-        if aspect_type is not None:
-            types = {0: 'FitWithinMaxSize', 1: 'ScaleWithParentSize'}
-            self.w(f"{var}.AspectType = Enum.AspectType.{types.get(aspect_type, 'FitWithinMaxSize')}")
-
-        dominant = self.get_token(props, 'DominantAxis')
-        if dominant is not None:
-            axes = {0: 'Width', 1: 'Height'}
-            self.w(f"{var}.DominantAxis = Enum.DominantAxis.{axes.get(dominant, 'Width')}")
-
-    def write_ui_size_constraint(self, var, props):
-        """Write UISizeConstraint properties"""
-        min_size = self.get_vector2(props, 'MinSize')
-        if min_size:
-            self.w(f"{var}.MinSize = Vector2.new({self.scale_offset(min_size['x'])}, {self.scale_offset(min_size['y'])})")
-
-        max_size = self.get_vector2(props, 'MaxSize')
-        if max_size:
-            x = self.scale_offset(max_size['x']) if max_size['x'] < 1e9 else "math.huge"
-            y = self.scale_offset(max_size['y']) if max_size['y'] < 1e9 else "math.huge"
-            self.w(f"{var}.MaxSize = Vector2.new({x}, {y})")
-
-    def write_ui_scale(self, var, props):
-        """Write UIScale properties"""
-        scale = self.get_float(props, 'Scale')
-        if scale is not None:
-            self.w(f"{var}.Scale = {scale}")
-
-    def write_ui_text_size_constraint(self, var, props):
-        """Write UITextSizeConstraint properties"""
-        min_size = self.get_int(props, 'MinTextSize')
-        if min_size is not None:
-            self.w(f"{var}.MinTextSize = {self.scale_offset(min_size)}")
-
-        max_size = self.get_int(props, 'MaxTextSize')
-        if max_size is not None:
-            self.w(f"{var}.MaxTextSize = {self.scale_offset(max_size)}")
-
-    def write_element(self, item, parent_var, zindex_base):
-        """Write a single element and its children"""
+            pad = p.get_udim(props, f'Padding{side}')
+            if pad:
+                g.w(f'{var}.Padding{side} = {g.fmt_udim(pad)}')
+        
+        g.w(f'{var}.Parent = {parent}')
+    
+    def write_element(self, item, parent_var):
+        """Write any element and its children recursively"""
         cls = item.get('class')
         if not cls:
-            return zindex_base
-
+            return
+        
         props = item.find('Properties')
-        name = self.get_str(props, 'Name') if props else None
-        var = self.get_var_name(name, cls)
-
-        self.w(f"local {var} = Instance.new('{cls}')")
-
-        current_zindex = zindex_base + 1
-
-        if props is not None:
-            # Write class-specific properties
-            if cls in self.gui_elements:
-                self.write_common_props(var, props, cls, current_zindex)
-
-            if cls in ['TextLabel', 'TextButton', 'TextBox']:
-                self.write_text_props(var, props)
-
-            if cls in ['ImageLabel', 'ImageButton']:
-                self.write_image_props(var, props)
-
-            if cls == 'ScrollingFrame':
-                self.write_common_props(var, props, cls, current_zindex)
-                self.write_scrolling_props(var, props)
-
-            if cls == 'UIStroke':
-                self.write_ui_stroke(var, props)
-
-            if cls == 'UICorner':
-                self.write_ui_corner(var, props)
-
-            if cls == 'UIGradient':
-                self.write_ui_gradient(var, props)
-
-            if cls == 'UIListLayout':
-                self.write_ui_list_layout(var, props)
-
-            if cls == 'UIGridLayout':
-                self.write_ui_grid_layout(var, props)
-
-            if cls == 'UIPadding':
-                self.write_ui_padding(var, props)
-
-            if cls == 'UIAspectRatioConstraint':
-                self.write_ui_aspect_ratio(var, props)
-
-            if cls == 'UISizeConstraint':
-                self.write_ui_size_constraint(var, props)
-
-            if cls == 'UIScale':
-                self.write_ui_scale(var, props)
-
-            if cls == 'UITextSizeConstraint':
-                self.write_ui_text_size_constraint(var, props)
-
-            # Button-specific properties
-            if cls in ['TextButton', 'ImageButton']:
-                auto_btn_color = self.get_bool(props, 'AutoButtonColor')
-                if auto_btn_color is not None and not auto_btn_color:
-                    self.w(f"{var}.AutoButtonColor = false")
-
-                modal = self.get_bool(props, 'Modal')
-                if modal:
-                    self.w(f"{var}.Modal = true")
-
-            # TextBox-specific properties
-            if cls == 'TextBox':
-                placeholder = self.get_str(props, 'PlaceholderText')
-                if placeholder:
-                    self.w(f'{var}.PlaceholderText = "{self.escape_str(placeholder)}"')
-
-                placeholder_color = self.get_any_color3(props, 'PlaceholderColor3')
-                if placeholder_color:
-                    self.w(f"{var}.PlaceholderColor3 = {self.format_color3(placeholder_color)}")
-
-                clear_on_focus = self.get_bool(props, 'ClearTextOnFocus')
-                if clear_on_focus is not None and not clear_on_focus:
-                    self.w(f"{var}.ClearTextOnFocus = false")
-
-                multi_line = self.get_bool(props, 'MultiLine')
-                if multi_line:
-                    self.w(f"{var}.MultiLine = true")
-
-        self.w(f"{var}.Parent = {parent_var}")
-        self.w("")
-
+        name = self.parser.get_string(props, 'Name') if props else None
+        var = self.gen.make_var_name(name, cls)
+        
+        self.gen.w(f"local {var} = Instance.new('{cls}')")
+        
+        # Write element based on class
+        if cls == 'Frame':
+            self.write_frame(var, props, parent_var)
+        elif cls in ['TextLabel', 'TextButton', 'TextBox']:
+            self.write_text_element(var, props, parent_var, cls)
+        elif cls in ['ImageLabel', 'ImageButton']:
+            self.write_image_element(var, props, parent_var, cls)
+        elif cls == 'ScrollingFrame':
+            self.write_scrolling_frame(var, props, parent_var)
+        elif cls == 'UIStroke':
+            self.write_ui_stroke(var, props, parent_var)
+        elif cls == 'UICorner':
+            self.write_ui_corner(var, props, parent_var)
+        elif cls == 'UIListLayout':
+            self.write_ui_list_layout(var, props, parent_var)
+        elif cls == 'UIGridLayout':
+            self.write_ui_grid_layout(var, props, parent_var)
+        elif cls == 'UIPadding':
+            self.write_ui_padding(var, props, parent_var)
+        else:
+            # Generic fallback
+            if props:
+                n = self.parser.get_string(props, 'Name')
+                if n:
+                    self.gen.w(f'{var}.Name = "{self.gen.escape_string(n)}"')
+            self.gen.w(f'{var}.Parent = {parent_var}')
+        
+        self.gen.w('')
+        
         # Process children
-        child_zindex = current_zindex
         for child in item.findall('Item'):
-            child_zindex = self.write_element(child, var, child_zindex)
-
-        return child_zindex
-
+            self.write_element(child, var)
+    
     def convert(self, xml_str):
-        """Convert RBXMX XML to Lua code"""
+        """Main conversion method"""
         try:
             root = ET.fromstring(xml_str)
         except ET.ParseError as e:
             return f'-- XML Parse Error: {e}'
-
-        self.lines = []
-        self.var_counter = 0
-        self.name_to_var = {}
-
-        gui_name = self.config.get('gui_name', 'ConvertedGui')
         
-        # Write header
-        self.w("local Players = game:GetService('Players')")
-        self.w("local player = Players.LocalPlayer")
-        self.w("local playerGui = player:WaitForChild('PlayerGui')")
-        self.w("")
-        self.w("local screenGui = Instance.new('ScreenGui')")
-        self.w(f"screenGui.Name = '{gui_name}'")
-        self.w("screenGui.ResetOnSpawn = false")
-        self.w("screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling")
-        self.w("screenGui.Parent = playerGui")
-        self.w("")
-
-        # Find all top-level items and calculate bounds
+        scale = self.config.get('scale', 1.0)
+        self.gen = LuaCodeGenerator(scale)
+        self.zindex = 0
+        g = self.gen
+        
+        # Find all top-level items
         items = root.findall('Item')
+        if not items:
+            for child in root:
+                items.extend(child.findall('Item'))
         
         if not items:
-            # Try nested structure
-            for child in root:
-                if child.tag == 'Item':
-                    items = [child]
-                    break
-                items.extend(child.findall('Item'))
-
-        if not items:
-            return "-- No GUI elements found in XML"
-
-        # Calculate bounds for positioning
+            return "-- Error: No GUI elements found in XML"
+        
+        # Calculate bounds for main container sizing
         min_x, min_y = float('inf'), float('inf')
         max_x, max_y = float('-inf'), float('-inf')
         
@@ -763,30 +650,36 @@ class UniversalConverter:
             props = item.find('Properties')
             if props is None:
                 continue
-            pos = self.get_udim2(props, 'Position')
-            size = self.get_udim2(props, 'Size')
+            pos = self.parser.get_udim2(props, 'Position')
+            size = self.parser.get_udim2(props, 'Size')
             if pos and size:
-                x, y = pos['xo'], pos['yo']
-                w, h = size['xo'], size['yo']
-                min_x = min(min_x, x)
-                min_y = min(min_y, y)
-                max_x = max(max_x, x + w)
-                max_y = max(max_y, y + h)
-
-        if min_x == float('inf'):
-            width, height = 400, 300
-        else:
-            width = max_x - min_x
-            height = max_y - min_y
-
-        scaled_width = self.scale_offset(width)
-        scaled_height = self.scale_offset(height)
-
-        # Create main container
-        self.w("local main = Instance.new('Frame')")
-        self.w("main.Name = 'Main'")
-        self.w(f"main.Size = UDim2.new(0, {scaled_width}, 0, {scaled_height})")
-
+                min_x = min(min_x, pos['xo'])
+                min_y = min(min_y, pos['yo'])
+                max_x = max(max_x, pos['xo'] + size['xo'])
+                max_y = max(max_y, pos['yo'] + size['yo'])
+        
+        width = int((max_x - min_x) * scale) if min_x != float('inf') else 400
+        height = int((max_y - min_y) * scale) if min_y != float('inf') else 300
+        
+        gui_name = self.config.get('gui_name', 'ConvertedGui')
+        
+        # Write header - matching the target style exactly
+        g.w("local Players = game:GetService('Players')")
+        g.w("local player = Players.LocalPlayer")
+        g.w("local playerGui = player:WaitForChild('PlayerGui')")
+        g.w("")
+        g.w("local screenGui = Instance.new('ScreenGui')")
+        g.w(f"screenGui.Name = '{gui_name}'")
+        g.w("screenGui.ResetOnSpawn = false")
+        g.w("screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling")
+        g.w("screenGui.Parent = playerGui")
+        g.w("")
+        
+        # Create main container frame
+        g.w("local main = Instance.new('Frame')")
+        g.w("main.Name = 'Main'")
+        g.w(f"main.Size = UDim2.new(0, {width}, 0, {height})")
+        
         # Position based on config
         pos = self.config.get('position', 'center')
         positions = {
@@ -802,54 +695,53 @@ class UniversalConverter:
         }
         
         if pos in positions:
-            self.w(f"main.Position = {positions[pos][0]}")
-            self.w(f"main.AnchorPoint = {positions[pos][1]}")
+            g.w(f"main.Position = {positions[pos][0]}")
+            g.w(f"main.AnchorPoint = {positions[pos][1]}")
         else:
-            self.w("main.Position = UDim2.new(0, 0, 0, 0)")
-
-        self.w("main.BackgroundTransparency = 1")
-        self.w("main.BorderSizePixel = 0")
-        self.w("main.Parent = screenGui")
-        self.w("")
-
+            g.w("main.Position = UDim2.new(0, 0, 0, 0)")
+        
+        g.w("main.BackgroundTransparency = 1")
+        g.w("main.BorderSizePixel = 0")
+        g.w("main.Parent = screenGui")
+        g.w("")
+        
         # Process all elements
-        zindex = 0
         for item in items:
-            zindex = self.write_element(item, 'main', zindex)
-
+            self.write_element(item, 'main')
+        
         # Add draggable functionality if requested
         if self.config.get('draggable'):
-            self.w("-- Draggable functionality")
-            self.w("local UIS = game:GetService('UserInputService')")
-            self.w("local dragging, dragInput, dragStart, startPos")
-            self.w("")
-            self.w("main.InputBegan:Connect(function(input)")
-            self.w("\tif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then")
-            self.w("\t\tdragging = true")
-            self.w("\t\tdragStart = input.Position")
-            self.w("\t\tstartPos = main.Position")
-            self.w("\t\tinput.Changed:Connect(function()")
-            self.w("\t\t\tif input.UserInputState == Enum.UserInputState.End then")
-            self.w("\t\t\t\tdragging = false")
-            self.w("\t\t\tend")
-            self.w("\t\tend)")
-            self.w("\tend")
-            self.w("end)")
-            self.w("")
-            self.w("main.InputChanged:Connect(function(input)")
-            self.w("\tif input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then")
-            self.w("\t\tdragInput = input")
-            self.w("\tend")
-            self.w("end)")
-            self.w("")
-            self.w("UIS.InputChanged:Connect(function(input)")
-            self.w("\tif input == dragInput and dragging then")
-            self.w("\t\tlocal delta = input.Position - dragStart")
-            self.w("\t\tmain.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)")
-            self.w("\tend")
-            self.w("end)")
-            self.w("")
-
+            g.w("-- Draggable functionality")
+            g.w("local UIS = game:GetService('UserInputService')")
+            g.w("local dragging, dragInput, dragStart, startPos")
+            g.w("")
+            g.w("main.InputBegan:Connect(function(input)")
+            g.w("\tif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then")
+            g.w("\t\tdragging = true")
+            g.w("\t\tdragStart = input.Position")
+            g.w("\t\tstartPos = main.Position")
+            g.w("\t\tinput.Changed:Connect(function()")
+            g.w("\t\t\tif input.UserInputState == Enum.UserInputState.End then")
+            g.w("\t\t\t\tdragging = false")
+            g.w("\t\t\tend")
+            g.w("\t\tend)")
+            g.w("\tend")
+            g.w("end)")
+            g.w("")
+            g.w("main.InputChanged:Connect(function(input)")
+            g.w("\tif input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then")
+            g.w("\t\tdragInput = input")
+            g.w("\tend")
+            g.w("end)")
+            g.w("")
+            g.w("UIS.InputChanged:Connect(function(input)")
+            g.w("\tif input == dragInput and dragging then")
+            g.w("\t\tlocal delta = input.Position - dragStart")
+            g.w("\t\tmain.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)")
+            g.w("\tend")
+            g.w("end)")
+            g.w("")
+        
         # Add destroy key if requested
         destroy_key = self.config.get('destroykey', 'none')
         key_map = {
@@ -859,26 +751,25 @@ class UniversalConverter:
         }
         
         if destroy_key in key_map:
-            self.w("-- Destroy key binding")
-            self.w("game:GetService('UserInputService').InputBegan:Connect(function(input, gameProcessed)")
-            self.w("\tif not gameProcessed and input.KeyCode == Enum.KeyCode." + key_map[destroy_key] + " then")
-            self.w("\t\tscreenGui:Destroy()")
-            self.w("\tend")
-            self.w("end)")
-            self.w("")
-
-        # Return statement
-        self.w("return screenGui")
-
-        return '\n'.join(self.lines)
+            g.w("-- Destroy key binding")
+            g.w("game:GetService('UserInputService').InputBegan:Connect(function(input, gameProcessed)")
+            g.w(f"\tif not gameProcessed and input.KeyCode == Enum.KeyCode.{key_map[destroy_key]} then")
+            g.w("\t\tscreenGui:Destroy()")
+            g.w("\tend")
+            g.w("end)")
+        
+        return g.get_output()
 
 
+# Create converter instance
 converter = UniversalConverter()
+
 
 @bot.event
 async def on_ready():
     print(f'{bot.user} has connected to Discord!')
     print(f'Bot is in {len(bot.guilds)} guilds')
+
 
 @bot.command(name='convert')
 async def convert_cmd(ctx, drag='false', pos='center', scl: float = 1.0, key='none', *, name='ConvertedGui'):
@@ -893,17 +784,15 @@ async def convert_cmd(ctx, drag='false', pos='center', scl: float = 1.0, key='no
         return
 
     try:
-        # Send processing message
         processing_msg = await ctx.send("⏳ Processing your file...")
 
-        # Read and decode the file
         data = await att.read()
         xml_content = data.decode('utf-8')
 
         # Parse configuration
         draggable = drag.lower() == 'true'
         valid_positions = ['center', 'top', 'bottom', 'left', 'right', 
-                          'topleft', 'topright', 'bottomleft', 'bottomright', 'original']
+                          'topleft', 'topright', 'bottomleft', 'bottomright']
         position = pos.lower() if pos.lower() in valid_positions else 'center'
         scale = max(0.1, min(5.0, scl))
         valid_keys = ['none', 'x', 'delete', 'backspace', 'escape', 'p', 'm', 'k', 'f1', 'f2', 'f3', 'f4']
@@ -923,16 +812,10 @@ async def convert_cmd(ctx, drag='false', pos='center', scl: float = 1.0, key='no
 
         # Create output file
         output_filename = att.filename.replace('.rbxmx', '.lua')
-        file = discord.File(
-            io.BytesIO(lua_code.encode('utf-8')),
-            filename=output_filename
-        )
+        file = discord.File(io.BytesIO(lua_code.encode('utf-8')), filename=output_filename)
 
-        # Create embed with conversion info
-        embed = discord.Embed(
-            title="✅ Conversion Complete!",
-            color=0x00ff00
-        )
+        # Create embed
+        embed = discord.Embed(title="✅ Conversion Complete!", color=0x00ff00)
         embed.add_field(name="GUI Name", value=gui_name, inline=True)
         embed.add_field(name="Position", value=position, inline=True)
         embed.add_field(name="Scale", value=f"{scale}x", inline=True)
@@ -959,13 +842,7 @@ async def chelp_cmd(ctx):
     )
     embed.add_field(
         name="📝 Commands",
-        value="""
-`!convert` - Convert an RBXMX file to Lua
-`!cconfig` - Show configuration options
-`!example` - Show usage examples
-`!ping` - Check bot latency
-`!chelp` - Show this help message
-        """,
+        value="`!convert` - Convert an RBXMX file to Lua\n`!cconfig` - Show configuration options\n`!example` - Show usage examples\n`!ping` - Check bot latency",
         inline=False
     )
     embed.add_field(
@@ -973,47 +850,19 @@ async def chelp_cmd(ctx):
         value="1. Export your GUI from Roblox as .rbxmx\n2. Attach the file to your message\n3. Use `!convert` with your options",
         inline=False
     )
-    embed.set_footer(text="Use !cconfig for detailed configuration options")
     await ctx.send(embed=embed)
 
 
 @bot.command(name='cconfig')
 async def cconfig_cmd(ctx):
     """Show configuration options"""
-    embed = discord.Embed(
-        title="⚙️ Configuration Options",
-        color=0x5865F2
-    )
-    embed.add_field(
-        name="Usage",
-        value="`!convert [drag] [position] [scale] [key] [name]`",
-        inline=False
-    )
-    embed.add_field(
-        name="drag",
-        value="Make GUI draggable\n`true` / `false`\nDefault: `false`",
-        inline=True
-    )
-    embed.add_field(
-        name="position",
-        value="Screen position\n`center`, `top`, `bottom`, `left`, `right`, `topleft`, `topright`, `bottomleft`, `bottomright`\nDefault: `center`",
-        inline=True
-    )
-    embed.add_field(
-        name="scale",
-        value="Size multiplier\n`0.1` to `5.0`\nDefault: `1.0`",
-        inline=True
-    )
-    embed.add_field(
-        name="key",
-        value="Key to destroy GUI\n`none`, `x`, `delete`, `backspace`, `escape`, `p`, `m`, `k`, `f1`-`f4`\nDefault: `none`",
-        inline=True
-    )
-    embed.add_field(
-        name="name",
-        value="GUI name (use `_` for spaces)\nDefault: `ConvertedGui`",
-        inline=True
-    )
+    embed = discord.Embed(title="⚙️ Configuration Options", color=0x5865F2)
+    embed.add_field(name="Usage", value="`!convert [drag] [position] [scale] [key] [name]`", inline=False)
+    embed.add_field(name="drag", value="`true` / `false` (default: false)", inline=True)
+    embed.add_field(name="position", value="`center`, `top`, `bottom`, `left`, `right`, `topleft`, `topright`, `bottomleft`, `bottomright`", inline=True)
+    embed.add_field(name="scale", value="`0.1` to `5.0` (default: 1.0)", inline=True)
+    embed.add_field(name="key", value="`none`, `x`, `delete`, `backspace`, `escape`, `p`, `m`, `k`, `f1`-`f4`", inline=True)
+    embed.add_field(name="name", value="GUI name (use `_` for spaces)", inline=True)
     await ctx.send(embed=embed)
 
 
@@ -1021,81 +870,65 @@ async def cconfig_cmd(ctx):
 async def ping_cmd(ctx):
     """Check bot latency"""
     latency = round(bot.latency * 1000)
-    color = 0x00ff00 if latency < 100 else 0xffff00 if latency < 200 else 0xff0000
-    embed = discord.Embed(
-        title="🏓 Pong!",
-        description=f"Latency: **{latency}ms**",
-        color=color
-    )
-    await ctx.send(embed=embed)
+    await ctx.send(f"🏓 Pong! Latency: **{latency}ms**")
 
 
 @bot.command(name='example')
 async def example_cmd(ctx):
     """Show usage examples"""
-    embed = discord.Embed(
-        title="📚 Usage Examples",
-        color=0x5865F2
-    )
-    embed.add_field(
-        name="Basic Conversion",
-        value="`!convert`\nConverts with default settings",
-        inline=False
-    )
-    embed.add_field(
-        name="Draggable GUI",
-        value="`!convert true`\nMakes the GUI draggable",
-        inline=False
-    )
-    embed.add_field(
-        name="Custom Position",
-        value="`!convert false topleft`\nPositions GUI at top-left",
-        inline=False
-    )
-    embed.add_field(
-        name="Scaled Up",
-        value="`!convert true center 1.5`\nDraggable, centered, 1.5x size",
-        inline=False
-    )
-    embed.add_field(
-        name="With Close Key",
-        value="`!convert true center 1.0 escape`\nPress Escape to close GUI",
-        inline=False
-    )
-    embed.add_field(
-        name="Full Example",
-        value="`!convert true center 1.2 x My_Cool_GUI`\nAll options configured",
-        inline=False
-    )
+    embed = discord.Embed(title="📚 Usage Examples", color=0x5865F2)
+    embed.add_field(name="Basic", value="`!convert`", inline=False)
+    embed.add_field(name="Draggable", value="`!convert true`", inline=False)
+    embed.add_field(name="Custom Position", value="`!convert false topleft`", inline=False)
+    embed.add_field(name="Scaled", value="`!convert true center 1.5`", inline=False)
+    embed.add_field(name="With Close Key", value="`!convert true center 1.0 escape`", inline=False)
+    embed.add_field(name="Full Example", value="`!convert true center 1.2 x My_Cool_GUI`", inline=False)
     await ctx.send(embed=embed)
 
+        # Calculate bounds
+        min_x, min_y = float('inf'), float('inf')
+        max_x, max_y = float('-inf'), float('-inf')
+        
+        for item in items:
+            props = item.find('Properties')
+            if props is None:
+                continue
+            pos = self.parser.get_udim2(props, 'Position')
+            size = self.parser.get_udim2(props, 'Size')
+            if pos and size:
+                min_x = min(min_x, pos['xo'])
+                min_y = min(min_y, pos['yo'])
+                max_x = max(max_x, pos['xo'] + size['xo'])
+                max_y = max(max_y, pos['yo'] + size['yo'])
+        
+        width = int((max_x - min_x) * scale) if min_x != float('inf') else 400
+        height = int((max_y - min_y) * scale) if min_y != float('inf') else 300
+        
+        gui_name = self.config.get('gui_name', 'ConvertedGui')
+        
+        # Write header - matching the target style exactly
+        g.w("local Players = game:GetService('Players')")
+        g.w("local player = Players.LocalPlayer")
+        g.w("local playerGui = player:WaitForChild('PlayerGui')")
+        g.w("")
+        g.w("local screenGui = Instance.new('ScreenGui')")
+        g.w(f"screenGui.Name = '{gui_name}'")
+        g.w("screenGui.ResetOnSpawn = false")
+        g.w("screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling")
+        g.w("screenGui.Parent = playerGui")
+        g.w("")
 
-@bot.event
-async def on_command_error(ctx, error):
-    """Handle command errors"""
-    if isinstance(error, commands.CommandNotFound):
-        return
-    elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(f"❌ Missing argument: {error.param.name}\nUse `!chelp` for help.")
-    elif isinstance(error, commands.BadArgument):
-        await ctx.send(f"❌ Invalid argument provided.\nUse `!cconfig` to see valid options.")
-    else:
-        await ctx.send(f"❌ An error occurred: {str(error)}")
-
-
-async def main():
-    """Main entry point"""
+        async def main():
     await start_web_server()
     token = os.getenv('DISCORD_BOT_TOKEN')
     if token:
         await bot.start(token)
     else:
-        print("❌ No DISCORD_BOT_TOKEN found in environment variables!")
+        print("❌ No DISCORD_BOT_TOKEN found!")
 
 
 if __name__ == "__main__":
-    token = os.getenv('DISCORD_BOT_TOKEN')
-    if token:
+    if os.getenv('DISCORD_BOT_TOKEN'):
         asyncio.run(main())
     else:
         print("❌ No DISCORD_BOT_TOKEN environment variable set!")
