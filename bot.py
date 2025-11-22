@@ -23,21 +23,30 @@ async def start_web_server():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
 
-class SmartConverter:
+class UniversalConverter:
     def __init__(self):
         self.lines = []
         self.config = {}
         self.scale = 1.0
-        self.elements = []
         self.min_x = 0
         self.min_y = 0
-        self.main_w = 0
-        self.main_h = 0
-        self.header_h = 0
-        self.buttons = []
-        self.header_el = None
-        self.bg_el = None
-        self.title_el = None
+        self.width = 0
+        self.height = 0
+        self.zindex = 1
+        self.enums = {
+            'ApplyStrokeMode': {0: 'Enum.ApplyStrokeMode.Contextual', 1: 'Enum.ApplyStrokeMode.Border'},
+            'LineJoinMode': {0: 'Enum.LineJoinMode.Round', 1: 'Enum.LineJoinMode.Bevel', 2: 'Enum.LineJoinMode.Miter'},
+            'TextXAlignment': {0: 'Enum.TextXAlignment.Center', 1: 'Enum.TextXAlignment.Left', 2: 'Enum.TextXAlignment.Right'},
+            'TextYAlignment': {0: 'Enum.TextYAlignment.Center', 1: 'Enum.TextYAlignment.Top', 2: 'Enum.TextYAlignment.Bottom'},
+            'AutomaticSize': {0: 'Enum.AutomaticSize.None', 1: 'Enum.AutomaticSize.X', 2: 'Enum.AutomaticSize.Y', 3: 'Enum.AutomaticSize.XY'},
+            'ScaleType': {0: 'Enum.ScaleType.Stretch', 1: 'Enum.ScaleType.Slice', 2: 'Enum.ScaleType.Tile', 3: 'Enum.ScaleType.Fit', 4: 'Enum.ScaleType.Crop'},
+            'FillDirection': {0: 'Enum.FillDirection.Horizontal', 1: 'Enum.FillDirection.Vertical'},
+            'HorizontalAlignment': {0: 'Enum.HorizontalAlignment.Center', 1: 'Enum.HorizontalAlignment.Left', 2: 'Enum.HorizontalAlignment.Right'},
+            'VerticalAlignment': {0: 'Enum.VerticalAlignment.Center', 1: 'Enum.VerticalAlignment.Top', 2: 'Enum.VerticalAlignment.Bottom'},
+            'SortOrder': {0: 'Enum.SortOrder.Name', 1: 'Enum.SortOrder.Custom', 2: 'Enum.SortOrder.LayoutOrder'},
+            'ResamplerMode': {0: 'Enum.ResamplerMode.Default', 1: 'Enum.ResamplerMode.Pixelated'},
+            'BorderMode': {0: 'Enum.BorderMode.Outline', 1: 'Enum.BorderMode.Middle', 2: 'Enum.BorderMode.Inset'},
+        }
 
     def set_config(self, **kw):
         self.config = kw
@@ -46,192 +55,281 @@ class SmartConverter:
     def w(self, line):
         self.lines.append(line)
 
-    def parse_xml(self, xml_str):
-        root = ET.fromstring(xml_str)
-        self.elements = []
-        for item in root.findall('Item'):
-            el = self.parse_item(item)
-            if el:
-                self.elements.append(el)
-        return self.elements
+    def get_udim2(self, props, name):
+        for p in props:
+            if p.get('name') == name and p.tag == 'UDim2':
+                return {
+                    'xs': float(p.findtext('XS') or 0),
+                    'xo': float(p.findtext('XO') or 0),
+                    'ys': float(p.findtext('YS') or 0),
+                    'yo': float(p.findtext('YO') or 0)
+                }
+        return None
 
-    def parse_item(self, item):
+    def get_udim(self, props, name):
+        for p in props:
+            if p.get('name') == name and p.tag == 'UDim':
+                return {
+                    's': float(p.findtext('S') or 0),
+                    'o': float(p.findtext('O') or 0)
+                }
+        return None
+
+    def get_color3(self, props, name):
+        for p in props:
+            if p.get('name') == name and p.tag == 'Color3':
+                return {
+                    'r': float(p.findtext('R') or 0),
+                    'g': float(p.findtext('G') or 0),
+                    'b': float(p.findtext('B') or 0)
+                }
+        return None
+
+    def get_str(self, props, name):
+        for p in props:
+            if p.get('name') == name and p.tag == 'string':
+                return p.text or ''
+        return None
+
+    def get_float(self, props, name):
+        for p in props:
+            if p.get('name') == name and p.tag == 'float':
+                return float(p.text or 0)
+        return None
+
+    def get_int(self, props, name):
+        for p in props:
+            if p.get('name') == name and p.tag == 'int':
+                return int(p.text or 0)
+        return None
+
+    def get_bool(self, props, name):
+        for p in props:
+            if p.get('name') == name and p.tag == 'bool':
+                return p.text == 'true'
+        return None
+
+    def get_token(self, props, name):
+        for p in props:
+            if p.get('name') == name and p.tag == 'token':
+                return int(p.text or 0)
+        return None
+
+    def get_font(self, props, name):
+        for p in props:
+            if p.get('name') == name and p.tag == 'Font':
+                fam = p.find('Family')
+                url = 'rbxasset://fonts/families/SourceSansPro.json'
+                if fam is not None:
+                    u = fam.find('url')
+                    if u is not None and u.text:
+                        url = u.text
+                wgt = p.findtext('Weight') or '400'
+                sty = p.findtext('Style') or 'Normal'
+                wmap = {'100':'Thin','200':'ExtraLight','300':'Light','400':'Regular','500':'Medium','600':'SemiBold','700':'Bold','800':'ExtraBold','900':'Heavy'}
+                return {'url': url, 'weight': wmap.get(wgt, wgt), 'style': sty}
+        return None
+
+    def get_content(self, props, name):
+        for p in props:
+            if p.get('name') == name and p.tag == 'Content':
+                u = p.find('url')
+                if u is not None and u.text and u.text != 'undefined':
+                    return u.text
+        return None
+
+    def calc_bounds(self, root):
+        min_x = float('inf')
+        min_y = float('inf')
+        max_x = float('-inf')
+        max_y = float('-inf')
+        
+        for item in root.findall('Item'):
+            props = item.find('Properties')
+            if props is None:
+                continue
+            pos = self.get_udim2(props, 'Position')
+            size = self.get_udim2(props, 'Size')
+            if pos and size:
+                x, y = pos['xo'], pos['yo']
+                w, h = size['xo'], size['yo']
+                min_x = min(min_x, x)
+                min_y = min(min_y, y)
+                max_x = max(max_x, x + w)
+                max_y = max(max_y, y + h)
+        
+        if min_x == float('inf'):
+            return 0, 0, 400, 300
+        
+        return min_x, min_y, max_x - min_x, max_y - min_y
+
+    def enum_str(self, name, val):
+        return self.enums.get(name, {}).get(val, str(val))
+
+    def is_ui_component(self, cls):
+        return cls in ['UIStroke', 'UICorner', 'UIGradient', 'UIListLayout', 'UIGridLayout', 'UIPadding', 'UIAspectRatioConstraint', 'UISizeConstraint', 'UIScale', 'UITextSizeConstraint']
+
+    def write_element(self, item, var, parent, apply_offset):
         cls = item.get('class')
         if not cls:
-            return None
+            return
+        
         props = item.find('Properties')
-        data = {'class': cls, 'children': []}
+        self.w(f"local {var} = Instance.new('{cls}')")
+        
+        self.zindex += 1
+        
         if props is not None:
-            for p in props:
-                name = p.get('name')
-                tag = p.tag
-                if tag == 'string':
-                    data[name] = p.text or ''
-                elif tag == 'bool':
-                    data[name] = p.text == 'true'
-                elif tag == 'int':
-                    data[name] = int(p.text or 0)
-                elif tag == 'float':
-                    data[name] = float(p.text or 0)
-                elif tag == 'token':
-                    data[name] = int(p.text or 0)
-                elif tag == 'Color3':
-                    data[name] = {
-                        'r': float(p.findtext('R') or 0),
-                        'g': float(p.findtext('G') or 0),
-                        'b': float(p.findtext('B') or 0)
-                    }
-                elif tag == 'UDim2':
-                    data[name] = {
-                        'xs': float(p.findtext('XS') or 0),
-                        'xo': float(p.findtext('XO') or 0),
-                        'ys': float(p.findtext('YS') or 0),
-                        'yo': float(p.findtext('YO') or 0)
-                    }
-                elif tag == 'UDim':
-                    data[name] = {
-                        's': float(p.findtext('S') or 0),
-                        'o': float(p.findtext('O') or 0)
-                    }
-                elif tag == 'Font':
-                    fam = p.find('Family')
-                    url = 'rbxasset://fonts/families/SourceSansPro.json'
-                    if fam is not None:
-                        u = fam.find('url')
-                        if u is not None and u.text:
-                            url = u.text
-                    wgt = p.findtext('Weight') or '400'
-                    sty = p.findtext('Style') or 'Normal'
-                    wmap = {'100':'Thin','200':'ExtraLight','300':'Light','400':'Regular','500':'Medium','600':'SemiBold','700':'Bold','800':'ExtraBold','900':'Heavy'}
-                    data[name] = {'url': url, 'weight': wmap.get(wgt, wgt), 'style': sty}
-                elif tag == 'Content':
-                    u = p.find('url')
-                    data[name] = u.text if u is not None and u.text and u.text != 'undefined' else ''
+            name = self.get_str(props, 'Name')
+            if name:
+                name = name.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '')
+                self.w(f'{var}.Name = "{name}"')
+            
+            if not self.is_ui_component(cls):
+                size = self.get_udim2(props, 'Size')
+                if size:
+                    xo = int(size['xo'] * self.scale)
+                    yo = int(size['yo'] * self.scale)
+                    self.w(f"{var}.Size = UDim2.new({size['xs']}, {xo}, {size['ys']}, {yo})")
+                
+                pos = self.get_udim2(props, 'Position')
+                if pos:
+                    if apply_offset:
+                        xo = int((pos['xo'] - self.min_x) * self.scale)
+                        yo = int((pos['yo'] - self.min_y) * self.scale)
+                    else:
+                        xo = int(pos['xo'] * self.scale)
+                        yo = int(pos['yo'] * self.scale)
+                    self.w(f"{var}.Position = UDim2.new({pos['xs']}, {xo}, {pos['ys']}, {yo})")
+                
+                self.w(f"{var}.ZIndex = {self.zindex}")
+            
+            bg_color = self.get_color3(props, 'BackgroundColor3')
+            if bg_color:
+                self.w(f"{var}.BackgroundColor3 = Color3.new({bg_color['r']}, {bg_color['g']}, {bg_color['b']})")
+            
+            bg_trans = self.get_float(props, 'BackgroundTransparency')
+            if bg_trans is not None:
+                self.w(f"{var}.BackgroundTransparency = {bg_trans}")
+            
+            border = self.get_int(props, 'BorderSizePixel')
+            if border is not None:
+                self.w(f"{var}.BorderSizePixel = {border}")
+            
+            visible = self.get_bool(props, 'Visible')
+            if visible is not None:
+                self.w(f"{var}.Visible = {str(visible).lower()}")
+            
+            text_color = self.get_color3(props, 'TextColor3')
+            if text_color:
+                self.w(f"{var}.TextColor3 = Color3.new({text_color['r']}, {text_color['g']}, {text_color['b']})")
+            
+            text_trans = self.get_float(props, 'TextTransparency')
+            if text_trans is not None:
+                self.w(f"{var}.TextTransparency = {text_trans}")
+            
+            text_size = self.get_int(props, 'TextSize')
+            if text_size is not None:
+                self.w(f"{var}.TextSize = {int(text_size * self.scale)}")
+            
+            text = self.get_str(props, 'Text')
+            if text is not None:
+                text = text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+                self.w(f'{var}.Text = "{text}"')
+            
+            text_wrapped = self.get_bool(props, 'TextWrapped')
+            if text_wrapped is not None:
+                self.w(f"{var}.TextWrapped = {str(text_wrapped).lower()}")
+            
+            text_x = self.get_token(props, 'TextXAlignment')
+            if text_x is not None:
+                self.w(f"{var}.TextXAlignment = {self.enum_str('TextXAlignment', text_x)}")
+            
+            text_y = self.get_token(props, 'TextYAlignment')
+            if text_y is not None:
+                self.w(f"{var}.TextYAlignment = {self.enum_str('TextYAlignment', text_y)}")
+            
+            auto_size = self.get_token(props, 'AutomaticSize')
+            if auto_size is not None:
+                self.w(f"{var}.AutomaticSize = {self.enum_str('AutomaticSize', auto_size)}")
+            
+            font = self.get_font(props, 'FontFace')
+            if font:
+                self.w(f'{var}.FontFace = Font.new("{font["url"]}", Enum.FontWeight.{font["weight"]}, Enum.FontStyle.{font["style"]})')
+            
+            image = self.get_content(props, 'Image')
+            if image:
+                self.w(f'{var}.Image = "{image}"')
+            
+            image_trans = self.get_float(props, 'ImageTransparency')
+            if image_trans is not None:
+                self.w(f"{var}.ImageTransparency = {image_trans}")
+            
+            image_color = self.get_color3(props, 'ImageColor3')
+            if image_color:
+                self.w(f"{var}.ImageColor3 = Color3.new({image_color['r']}, {image_color['g']}, {image_color['b']})")
+            
+            scale_type = self.get_token(props, 'ScaleType')
+            if scale_type is not None:
+                self.w(f"{var}.ScaleType = {self.enum_str('ScaleType', scale_type)}")
+            
+            color = self.get_color3(props, 'Color')
+            if color:
+                self.w(f"{var}.Color = Color3.new({color['r']}, {color['g']}, {color['b']})")
+            
+            trans = self.get_float(props, 'Transparency')
+            if trans is not None:
+                self.w(f"{var}.Transparency = {trans}")
+            
+            thickness = self.get_float(props, 'Thickness')
+            if thickness is not None:
+                self.w(f"{var}.Thickness = {thickness * self.scale}")
+            
+            apply_mode = self.get_token(props, 'ApplyStrokeMode')
+            if apply_mode is not None:
+                self.w(f"{var}.ApplyStrokeMode = {self.enum_str('ApplyStrokeMode', apply_mode)}")
+            
+            line_join = self.get_token(props, 'LineJoinMode')
+            if line_join is not None:
+                self.w(f"{var}.LineJoinMode = {self.enum_str('LineJoinMode', line_join)}")
+            
+            corner = self.get_udim(props, 'CornerRadius')
+            if corner:
+                self.w(f"{var}.CornerRadius = UDim.new({corner['s']}, {int(corner['o'] * self.scale)})")
+            
+            rotation = self.get_float(props, 'Rotation')
+            if rotation is not None:
+                self.w(f"{var}.Rotation = {rotation}")
+            
+            anchor = self.get_udim2(props, 'AnchorPoint')
+            if anchor:
+                self.w(f"{var}.AnchorPoint = Vector2.new({anchor['xo']}, {anchor['yo']})")
+            
+            clip = self.get_bool(props, 'ClipsDescendants')
+            if clip is not None:
+                self.w(f"{var}.ClipsDescendants = {str(clip).lower()}")
+        
+        self.w(f"{var}.Parent = {parent}")
+        self.w("")
+        
+        ci = 1
         for child in item.findall('Item'):
-            c = self.parse_item(child)
-            if c:
-                data['children'].append(c)
-        return data
+            self.write_element(child, f'{var}_{ci}', var, False)
+            ci += 1
 
-    def analyze_structure(self):
-        if not self.elements:
-            return
+    def convert(self, xml_str):
+        try:
+            root = ET.fromstring(xml_str)
+        except ET.ParseError as e:
+            return f'-- XML Error: {e}'
         
-        sizes = []
-        positions = []
-        for el in self.elements:
-            if 'Size' in el and 'Position' in el:
-                sz = el['Size']
-                ps = el['Position']
-                area = sz['xo'] * sz['yo']
-                sizes.append((area, el, sz, ps))
-                positions.append(ps)
-        
-        if not sizes:
-            return
-        
-        sizes.sort(key=lambda x: x[0], reverse=True)
-        self.bg_el = sizes[0][1]
-        self.main_w = sizes[0][2]['xo']
-        self.main_h = sizes[0][2]['yo']
-        self.min_x = sizes[0][3]['xo']
-        self.min_y = sizes[0][3]['yo']
-        
-        for el in self.elements:
-            cls = el.get('class', '')
-            if cls == 'TextLabel' and 'Text' in el:
-                if el.get('TextSize', 0) >= 24:
-                    self.title_el = el
-            elif cls == 'Frame' and 'BackgroundColor3' in el:
-                sz = el.get('Size', {})
-                if sz.get('xo', 0) < 200 and sz.get('yo', 0) < 100:
-                    self.buttons.append(el)
-        
-        for el in self.elements:
-            sz = el.get('Size', {})
-            if sz.get('yo', 0) > 0 and sz.get('yo', 0) < 100 and sz.get('xo', 0) > 400:
-                ps = el.get('Position', {})
-                if abs(ps.get('yo', 0) - self.min_y) < 10:
-                    self.header_el = el
-                    self.header_h = sz.get('yo', 61)
-                    break
-        
-        if not self.header_h:
-            self.header_h = 61
-
-    def generate(self):
-        self.analyze_structure()
+        self.min_x, self.min_y, self.width, self.height = self.calc_bounds(root)
         self.lines = []
+        self.zindex = 0
         
         gn = self.config.get('gui_name', 'ConvertedGui')
-        mw = int(self.main_w * self.scale)
-        mh = int(self.main_h * self.scale)
-        hh = int(self.header_h * self.scale)
-        
-        bg_color = self.bg_el.get('BackgroundColor3', {'r': 0.25, 'g': 0.18, 'b': 0.18}) if self.bg_el else {'r': 0.25, 'g': 0.18, 'b': 0.18}
-        bg_trans = self.bg_el.get('BackgroundTransparency', 0.25) if self.bg_el else 0.25
-        if self.bg_el and self.bg_el.get('class') == 'ImageLabel':
-            bg_trans = self.bg_el.get('ImageTransparency', 0.25)
-        
-        header_color = {'r': 0.2, 'g': 0.12, 'b': 0.12}
-        if self.header_el and 'BackgroundColor3' in self.header_el:
-            header_color = self.header_el['BackgroundColor3']
-        
-        title_text = "GUI"
-        title_color = {'r': 1, 'g': 1, 'b': 1}
-        title_size = 48
-        title_font = {'url': 'rbxasset://fonts/families/SourceSansPro.json', 'weight': 'Regular', 'style': 'Normal'}
-        title_stroke_color = {'r': 0.4, 'g': 0.2, 'b': 0.2}
-        title_stroke_thickness = 4
-        
-        if self.title_el:
-            title_text = self.title_el.get('Text', 'GUI')
-            title_color = self.title_el.get('TextColor3', title_color)
-            title_size = int(self.title_el.get('TextSize', 48) * self.scale)
-            if 'FontFace' in self.title_el:
-                title_font = self.title_el['FontFace']
-            for child in self.title_el.get('children', []):
-                if child.get('class') == 'UIStroke':
-                    title_stroke_color = child.get('Color', title_stroke_color)
-                    title_stroke_thickness = child.get('Thickness', 4) * self.scale
-        
-        btn_color = {'r': 0.326923, 'g': 0.223188, 'b': 0.223188}
-        btn_stroke_color = {'r': 1, 'g': 0.572115, 'b': 0.572115}
-        btn_stroke_thickness = 2
-        btn_corner = 15
-        btn_w = 137
-        btn_h = 69
-        
-        if self.buttons:
-            b = self.buttons[0]
-            btn_color = b.get('BackgroundColor3', btn_color)
-            sz = b.get('Size', {})
-            btn_w = int(sz.get('xo', 137))
-            btn_h = int(sz.get('yo', 69))
-            for child in b.get('children', []):
-                if child.get('class') == 'UIStroke':
-                    btn_stroke_color = child.get('Color', btn_stroke_color)
-                    btn_stroke_thickness = child.get('Thickness', 2)
-                elif child.get('class') == 'UICorner':
-                    cr = child.get('CornerRadius', {'s': 0, 'o': 15})
-                    btn_corner = int(cr.get('o', 15))
-        
-        btn_w = int(btn_w * self.scale)
-        btn_h = int(btn_h * self.scale)
-        btn_corner = int(btn_corner * self.scale)
-        btn_stroke_thickness = int(btn_stroke_thickness * self.scale)
-        
-        num_buttons = len(self.buttons) if self.buttons else 9
-        if num_buttons < 9:
-            num_buttons = 9
-        
-        cols = 3
-        rows = (num_buttons + cols - 1) // cols
-        
-        container_top = hh + 12
-        
-        pad_x = 20
-        pad_y = 20
+        mw = int(self.width * self.scale)
+        mh = int(self.height * self.scale)
         
         self.w("local Players = game:GetService('Players')")
         self.w("local player = Players.LocalPlayer")
@@ -270,93 +368,10 @@ class SmartConverter:
         self.w("main.Parent = screenGui")
         self.w("")
         
-        self.w("local bg = Instance.new('Frame')")
-        self.w("bg.Name = 'Background'")
-        self.w("bg.Size = UDim2.new(1, 0, 1, 0)")
-        self.w("bg.Position = UDim2.new(0, 0, 0, 0)")
-        self.w(f"bg.BackgroundColor3 = Color3.new({bg_color['r']}, {bg_color['g']}, {bg_color['b']})")
-        self.w(f"bg.BackgroundTransparency = {bg_trans}")
-        self.w("bg.BorderSizePixel = 0")
-        self.w("bg.ZIndex = 1")
-        self.w("bg.Parent = main")
-        self.w("")
-        self.w("local bgCorner = Instance.new('UICorner')")
-        self.w("bgCorner.CornerRadius = UDim.new(0, 15)")
-        self.w("bgCorner.Parent = bg")
-        self.w("")
-        
-        self.w("local header = Instance.new('Frame')")
-        self.w("header.Name = 'Header'")
-        self.w(f"header.Size = UDim2.new(1, 0, 0, {hh})")
-        self.w("header.Position = UDim2.new(0, 0, 0, 0)")
-        self.w(f"header.BackgroundColor3 = Color3.new({header_color['r']}, {header_color['g']}, {header_color['b']})")
-        self.w("header.BackgroundTransparency = 0")
-        self.w("header.BorderSizePixel = 0")
-        self.w("header.ZIndex = 2")
-        self.w("header.Parent = main")
-        self.w("")
-        self.w("local headerCorner = Instance.new('UICorner')")
-        self.w("headerCorner.CornerRadius = UDim.new(0, 15)")
-        self.w("headerCorner.Parent = header")
-        self.w("")
-        
-        title_text_escaped = title_text.replace('\\', '\\\\').replace('"', '\\"')
-        self.w("local title = Instance.new('TextLabel')")
-        self.w("title.Name = 'Title'")
-        self.w("title.Size = UDim2.new(1, 0, 1, 0)")
-        self.w("title.Position = UDim2.new(0, 0, 0, 0)")
-        self.w("title.BackgroundTransparency = 1")
-        self.w(f'title.Text = "{title_text_escaped}"')
-        self.w(f"title.TextColor3 = Color3.new({title_color['r']}, {title_color['g']}, {title_color['b']})")
-        self.w(f"title.TextSize = {title_size}")
-        self.w(f'title.FontFace = Font.new("{title_font["url"]}", Enum.FontWeight.{title_font["weight"]}, Enum.FontStyle.{title_font["style"]})')
-        self.w("title.TextXAlignment = Enum.TextXAlignment.Center")
-        self.w("title.TextYAlignment = Enum.TextYAlignment.Center")
-        self.w("title.ZIndex = 3")
-        self.w("title.Parent = header")
-        self.w("")
-        self.w("local titleStroke = Instance.new('UIStroke')")
-        self.w(f"titleStroke.Color = Color3.new({title_stroke_color['r']}, {title_stroke_color['g']}, {title_stroke_color['b']})")
-        self.w(f"titleStroke.Thickness = {title_stroke_thickness}")
-        self.w("titleStroke.Parent = title")
-        self.w("")
-        
-        self.w("local buttonContainer = Instance.new('Frame')")
-        self.w("buttonContainer.Name = 'Buttons'")
-        self.w(f"buttonContainer.Size = UDim2.new(1, -24, 1, -{container_top + 12})")
-        self.w(f"buttonContainer.Position = UDim2.new(0, 12, 0, {container_top})")
-        self.w("buttonContainer.BackgroundTransparency = 1")
-        self.w("buttonContainer.BorderSizePixel = 0")
-        self.w("buttonContainer.ZIndex = 2")
-        self.w("buttonContainer.Parent = main")
-        self.w("")
-        self.w("local grid = Instance.new('UIGridLayout')")
-        self.w(f"grid.CellSize = UDim2.new(0, {btn_w}, 0, {btn_h})")
-        self.w(f"grid.CellPadding = UDim2.new(0, {pad_x}, 0, {pad_y})")
-        self.w("grid.SortOrder = Enum.SortOrder.LayoutOrder")
-        self.w("grid.Parent = buttonContainer")
-        self.w("")
-        
-        self.w(f"for i = 1, {num_buttons} do")
-        self.w("\tlocal btn = Instance.new('Frame')")
-        self.w('\tbtn.Name = "Button" .. i')
-        self.w(f"\tbtn.BackgroundColor3 = Color3.new({btn_color['r']}, {btn_color['g']}, {btn_color['b']})")
-        self.w("\tbtn.BackgroundTransparency = 0")
-        self.w("\tbtn.BorderSizePixel = 0")
-        self.w("\tbtn.LayoutOrder = i")
-        self.w("\tbtn.ZIndex = 3")
-        self.w("\tbtn.Parent = buttonContainer")
-        self.w("")
-        self.w("\tlocal stroke = Instance.new('UIStroke')")
-        self.w(f"\tstroke.Color = Color3.new({btn_stroke_color['r']}, {btn_stroke_color['g']}, {btn_stroke_color['b']})")
-        self.w(f"\tstroke.Thickness = {btn_stroke_thickness}")
-        self.w("\tstroke.Parent = btn")
-        self.w("")
-        self.w("\tlocal corner = Instance.new('UICorner')")
-        self.w(f"\tcorner.CornerRadius = UDim.new(0, {btn_corner})")
-        self.w("\tcorner.Parent = btn")
-        self.w("end")
-        self.w("")
+        idx = 1
+        for item in root.findall('Item'):
+            self.write_element(item, f'el{idx}', 'main', True)
+            idx += 1
         
         if self.config.get('draggable'):
             self.w("local UIS = game:GetService('UserInputService')")
@@ -393,16 +408,7 @@ class SmartConverter:
         
         return '\n'.join(self.lines)
 
-    def convert(self, xml_str):
-        try:
-            self.parse_xml(xml_str)
-            return self.generate()
-        except ET.ParseError as e:
-            return f'-- XML Error: {e}'
-        except Exception as e:
-            return f'-- Error: {e}'
-
-converter = SmartConverter()
+converter = UniversalConverter()
 
 @bot.event
 async def on_ready():
