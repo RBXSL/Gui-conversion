@@ -419,11 +419,11 @@ class RobloxConverter:
 
 converter = RobloxConverter()
 
- @bot.event
+@bot.event
 async def on_ready():
     print(f'{bot.user} connected to Discord!')
 
- @bot.command(name='convert')
+@bot.command(name='convert')
 async def convert_file(ctx, draggable: str = "false", position: str = "center", scale: float = 1.0, destroykey: str = "none", gui_name: str = "ConvertedGui", transparency: float = -1):
     if not ctx.message.attachments:
         await ctx.send("Please attach an RBXMX file!")
@@ -480,7 +480,7 @@ async def convert_file(ctx, draggable: str = "false", position: str = "center", 
     except Exception as e:
         await ctx.send(f"Error: {str(e)}")
 
- @bot.command(name='chelp')
+@bot.command(name='chelp')
 async def chelp(ctx):
     embed = discord.Embed(title="Bot Commands", color=discord.Color.green())
     embed.add_field(name="!convert", value="Convert RBXMX file to Lua", inline=False)
@@ -490,8 +490,8 @@ async def chelp(ctx):
     embed.add_field(name="!example", value="Show usage examples", inline=False)
     await ctx.send(embed=embed)
 
- @bot.command(name='cconfig')
-def cconfig(ctx):
+@bot.command(name='cconfig')
+async def cconfig(ctx):
     embed = discord.Embed(title="Configuration Options", color=discord.Color.blue())
     embed.add_field(name="Usage", value="`!convert [drag] [pos] [scale] [key] [name] [trans]`", inline=False)
     embed.add_field(name="drag", value="true / false", inline=True)
