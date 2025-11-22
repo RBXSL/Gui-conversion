@@ -885,40 +885,8 @@ async def example_cmd(ctx):
     embed.add_field(name="Full Example", value="`!convert true center 1.2 x My_Cool_GUI`", inline=False)
     await ctx.send(embed=embed)
 
-        # Calculate bounds
-        min_x, min_y = float('inf'), float('inf')
-        max_x, max_y = float('-inf'), float('-inf')
-        
-        for item in items:
-            props = item.find('Properties')
-            if props is None:
-                continue
-            pos = self.parser.get_udim2(props, 'Position')
-            size = self.parser.get_udim2(props, 'Size')
-            if pos and size:
-                min_x = min(min_x, pos['xo'])
-                min_y = min(min_y, pos['yo'])
-                max_x = max(max_x, pos['xo'] + size['xo'])
-                max_y = max(max_y, pos['yo'] + size['yo'])
-        
-        width = int((max_x - min_x) * scale) if min_x != float('inf') else 400
-        height = int((max_y - min_y) * scale) if min_y != float('inf') else 300
-        
-        gui_name = self.config.get('gui_name', 'ConvertedGui')
-        
-        # Write header - matching the target style exactly
-        g.w("local Players = game:GetService('Players')")
-        g.w("local player = Players.LocalPlayer")
-        g.w("local playerGui = player:WaitForChild('PlayerGui')")
-        g.w("")
-        g.w("local screenGui = Instance.new('ScreenGui')")
-        g.w(f"screenGui.Name = '{gui_name}'")
-        g.w("screenGui.ResetOnSpawn = false")
-        g.w("screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling")
-        g.w("screenGui.Parent = playerGui")
-        g.w("")
 
-        async def main():
+async def main():
     await start_web_server()
     token = os.getenv('DISCORD_BOT_TOKEN')
     if token:
