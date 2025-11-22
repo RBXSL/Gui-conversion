@@ -23,325 +23,394 @@ async def start_web_server():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
 
-def parse_xml(xml_str):
-    root = ET.fromstring(xml_str)
-    elements = []
-    
-    for item in root.findall('Item'):
-        el = parse_item(item)
-        if el:
-            elements.append(el)
-    
-    return elements
+class SmartConverter:
+    def __init__(self):
+        self.lines = []
+        self.config = {}
+        self.scale = 1.0
+        self.elements = []
+        self.min_x = 0
+        self.min_y = 0
+        self.main_w = 0
+        self.main_h = 0
+        self.header_h = 0
+        self.buttons = []
+        self.header_el = None
+        self.bg_el = None
+        self.title_el = None
 
-def parse_item(item):
-    cls = item.get('class')
-    if not cls:
-        return None
-    
-    props = item.find('Properties')
-    data = {'class': cls, 'children': []}
-    
-    if props is not None:
-        for p in props:
-            name = p.get('name')
-            tag = p.tag
-            
-            if tag == 'string':
-                data[name] = p.text or ''
-            elif tag == 'bool':
-                data[name] = p.text == 'true'
-            elif tag == 'int':
-                data[name] = int(p.text or 0)
-            elif tag == 'float':
-                data[name] = float(p.text or 0)
-            elif tag == 'token':
-                data[name] = int(p.text or 0)
-            elif tag == 'Color3':
-                data[name] = {
-                    'r': float(p.findtext('R') or 0),
-                    'g': float(p.findtext('G') or 0),
-                    'b': float(p.findtext('B') or 0)
-                }
-            elif tag == 'UDim2':
-                data[name] = {
-                    'xs': float(p.findtext('XS') or 0),
-                    'xo': float(p.findtext('XO') or 0),
-                    'ys': float(p.findtext('YS') or 0),
-                    'yo': float(p.findtext('YO') or 0)
-                }
-            elif tag == 'UDim':
-                data[name] = {
-                    's': float(p.findtext('S') or 0),
-                    'o': float(p.findtext('O') or 0)
-                }
-            elif tag == 'Font':
-                fam = p.find('Family')
-                url = 'rbxasset://fonts/families/SourceSansPro.json'
-                if fam is not None:
-                    u = fam.find('url')
-                    if u is not None and u.text:
-                        url = u.text
-                wgt = p.findtext('Weight') or '400'
-                sty = p.findtext('Style') or 'Normal'
-                wmap = {'100':'Thin','200':'ExtraLight','300':'Light','400':'Regular','500':'Medium','600':'SemiBold','700':'Bold','800':'ExtraBold','900':'Heavy'}
-                data[name] = {'url': url, 'weight': wmap.get(wgt, wgt), 'style': sty}
-            elif tag == 'Content':
-                u = p.find('url')
-                if u is not None and u.text and u.text != 'undefined':
-                    data[name] = u.text
-                else:
-                    data[name] = ''
-    
-    for child in item.findall('Item'):
-        c = parse_item(child)
-        if c:
-            data['children'].append(c)
-    
-    return data
+    def set_config(self, **kw):
+        self.config = kw
+        self.scale = kw.get('scale', 1.0)
 
-def calc_bounds(elements):
-    min_x = float('inf')
-    min_y = float('inf')
-    max_x = float('-inf')
-    max_y = float('-inf')
-    
-    for el in elements:
-        pos = el.get('Position', {'xs':0,'xo':0,'ys':0,'yo':0})
-        size = el.get('Size', {'xs':0,'xo':0,'ys':0,'yo':0})
+    def w(self, line):
+        self.lines.append(line)
+
+    def parse_xml(self, xml_str):
+        root = ET.fromstring(xml_str)
+        self.elements = []
+        for item in root.findall('Item'):
+            el = self.parse_item(item)
+            if el:
+                self.elements.append(el)
+        return self.elements
+
+    def parse_item(self, item):
+        cls = item.get('class')
+        if not cls:
+            return None
+        props = item.find('Properties')
+        data = {'class': cls, 'children': []}
+        if props is not None:
+            for p in props:
+                name = p.get('name')
+                tag = p.tag
+                if tag == 'string':
+                    data[name] = p.text or ''
+                elif tag == 'bool':
+                    data[name] = p.text == 'true'
+                elif tag == 'int':
+                    data[name] = int(p.text or 0)
+                elif tag == 'float':
+                    data[name] = float(p.text or 0)
+                elif tag == 'token':
+                    data[name] = int(p.text or 0)
+                elif tag == 'Color3':
+                    data[name] = {
+                        'r': float(p.findtext('R') or 0),
+                        'g': float(p.findtext('G') or 0),
+                        'b': float(p.findtext('B') or 0)
+                    }
+                elif tag == 'UDim2':
+                    data[name] = {
+                        'xs': float(p.findtext('XS') or 0),
+                        'xo': float(p.findtext('XO') or 0),
+                        'ys': float(p.findtext('YS') or 0),
+                        'yo': float(p.findtext('YO') or 0)
+                    }
+                elif tag == 'UDim':
+                    data[name] = {
+                        's': float(p.findtext('S') or 0),
+                        'o': float(p.findtext('O') or 0)
+                    }
+                elif tag == 'Font':
+                    fam = p.find('Family')
+                    url = 'rbxasset://fonts/families/SourceSansPro.json'
+                    if fam is not None:
+                        u = fam.find('url')
+                        if u is not None and u.text:
+                            url = u.text
+                    wgt = p.findtext('Weight') or '400'
+                    sty = p.findtext('Style') or 'Normal'
+                    wmap = {'100':'Thin','200':'ExtraLight','300':'Light','400':'Regular','500':'Medium','600':'SemiBold','700':'Bold','800':'ExtraBold','900':'Heavy'}
+                    data[name] = {'url': url, 'weight': wmap.get(wgt, wgt), 'style': sty}
+                elif tag == 'Content':
+                    u = p.find('url')
+                    data[name] = u.text if u is not None and u.text and u.text != 'undefined' else ''
+        for child in item.findall('Item'):
+            c = self.parse_item(child)
+            if c:
+                data['children'].append(c)
+        return data
+
+    def analyze_structure(self):
+        if not self.elements:
+            return
         
-        x = pos['xo']
-        y = pos['yo']
-        w = size['xo']
-        h = size['yo']
+        sizes = []
+        positions = []
+        for el in self.elements:
+            if 'Size' in el and 'Position' in el:
+                sz = el['Size']
+                ps = el['Position']
+                area = sz['xo'] * sz['yo']
+                sizes.append((area, el, sz, ps))
+                positions.append(ps)
         
-        if x < min_x:
-            min_x = x
-        if y < min_y:
-            min_y = y
-        if x + w > max_x:
-            max_x = x + w
-        if y + h > max_y:
-            max_y = y + h
-    
-    return min_x, min_y, max_x - min_x, max_y - min_y
-
-def enum_val(name, v):
-    m = {
-        'ApplyStrokeMode': {0: 'Enum.ApplyStrokeMode.Contextual', 1: 'Enum.ApplyStrokeMode.Border'},
-        'LineJoinMode': {0: 'Enum.LineJoinMode.Round', 1: 'Enum.LineJoinMode.Bevel', 2: 'Enum.LineJoinMode.Miter'},
-        'TextXAlignment': {0: 'Enum.TextXAlignment.Center', 1: 'Enum.TextXAlignment.Left', 2: 'Enum.TextXAlignment.Right'},
-        'TextYAlignment': {0: 'Enum.TextYAlignment.Center', 1: 'Enum.TextYAlignment.Top', 2: 'Enum.TextYAlignment.Bottom'},
-        'AutomaticSize': {0: 'Enum.AutomaticSize.None', 1: 'Enum.AutomaticSize.X', 2: 'Enum.AutomaticSize.Y', 3: 'Enum.AutomaticSize.XY'},
-    }
-    return m.get(name, {}).get(v, str(v))
-
-def generate_lua(elements, config):
-    lines = []
-    w = lines.append
-    
-    min_x, min_y, total_w, total_h = calc_bounds(elements)
-    scale = config.get('scale', 1.0)
-    gn = config.get('gui_name', 'ConvertedGui')
-    
-    cw = int(total_w * scale)
-    ch = int(total_h * scale)
-    
-    w("local Players = game:GetService('Players')")
-    w("local player = Players.LocalPlayer")
-    w("local playerGui = player:WaitForChild('PlayerGui')")
-    w("")
-    w("local screenGui = Instance.new('ScreenGui')")
-    w(f"screenGui.Name = '{gn}'")
-    w("screenGui.ResetOnSpawn = false")
-    w("screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling")
-    w("screenGui.Parent = playerGui")
-    w("")
-    w("local main = Instance.new('Frame')")
-    w("main.Name = 'Main'")
-    w(f"main.Size = UDim2.new(0, {cw}, 0, {ch})")
-    w("main.BackgroundTransparency = 1")
-    w("main.BorderSizePixel = 0")
-    
-    pos = config.get('position', 'center')
-    pm = {
-        'center': ("UDim2.new(0.5, 0, 0.5, 0)", "Vector2.new(0.5, 0.5)"),
-        'top': ("UDim2.new(0.5, 0, 0, 10)", "Vector2.new(0.5, 0)"),
-        'bottom': ("UDim2.new(0.5, 0, 1, -10)", "Vector2.new(0.5, 1)"),
-        'left': ("UDim2.new(0, 10, 0.5, 0)", "Vector2.new(0, 0.5)"),
-        'right': ("UDim2.new(1, -10, 0.5, 0)", "Vector2.new(1, 0.5)"),
-        'topleft': ("UDim2.new(0, 10, 0, 10)", "Vector2.new(0, 0)"),
-        'topright': ("UDim2.new(1, -10, 0, 10)", "Vector2.new(1, 0)"),
-        'bottomleft': ("UDim2.new(0, 10, 1, -10)", "Vector2.new(0, 1)"),
-        'bottomright': ("UDim2.new(1, -10, 1, -10)", "Vector2.new(1, 1)"),
-    }
-    if pos in pm:
-        w(f"main.Position = {pm[pos][0]}")
-        w(f"main.AnchorPoint = {pm[pos][1]}")
-    
-    w("main.Parent = screenGui")
-    w("")
-    
-    for i, el in enumerate(elements):
-        write_element(lines, el, f'el{i+1}', 'main', min_x, min_y, scale, True)
-    
-    if config.get('draggable'):
-        w("local UIS = game:GetService('UserInputService')")
-        w("local dragging, dragInput, dragStart, startPos")
-        w("main.InputBegan:Connect(function(input)")
-        w("\tif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then")
-        w("\t\tdragging = true")
-        w("\t\tdragStart = input.Position")
-        w("\t\tstartPos = main.Position")
-        w("\t\tinput.Changed:Connect(function()")
-        w("\t\t\tif input.UserInputState == Enum.UserInputState.End then dragging = false end")
-        w("\t\tend)")
-        w("\tend")
-        w("end)")
-        w("main.InputChanged:Connect(function(input)")
-        w("\tif input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then")
-        w("\t\tdragInput = input")
-        w("\tend")
-        w("end)")
-        w("UIS.InputChanged:Connect(function(input)")
-        w("\tif input == dragInput and dragging then")
-        w("\t\tlocal delta = input.Position - dragStart")
-        w("\t\tmain.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)")
-        w("\tend")
-        w("end)")
-        w("")
-    
-    dk = config.get('destroykey', 'none')
-    km = {'x':'X','delete':'Delete','backspace':'Backspace','escape':'Escape','p':'P','m':'M','k':'K'}
-    if dk in km:
-        w(f"game:GetService('UserInputService').InputBegan:Connect(function(i,g)")
-        w(f"\tif not g and i.KeyCode == Enum.KeyCode.{km[dk]} then screenGui:Destroy() end")
-        w("end)")
-    
-    return '\n'.join(lines)
-
-def write_element(lines, el, var, parent, min_x, min_y, scale, is_top):
-    w = lines.append
-    cls = el['class']
-    
-    w(f"local {var} = Instance.new('{cls}')")
-    
-    # Name
-    if 'Name' in el:
-        nm = str(el['Name']).replace('\\', '\\\\').replace('"', '\\"').replace('\n', '')
-        w(f'{var}.Name = "{nm}"')
-    
-    # Size (only for non-UI elements)
-    if cls not in ['UIStroke', 'UICorner', 'UIGradient', 'UIListLayout', 'UIGridLayout', 'UIPadding']:
-        if 'Size' in el:
-            sz = el['Size']
-            xo = int(sz['xo'] * scale)
-            yo = int(sz['yo'] * scale)
-            w(f"{var}.Size = UDim2.new({sz['xs']}, {xo}, {sz['ys']}, {yo})")
+        if not sizes:
+            return
         
-        # Position
-        if 'Position' in el:
-            ps = el['Position']
-            if is_top:
-                xo = int((ps['xo'] - min_x) * scale)
-                yo = int((ps['yo'] - min_y) * scale)
-            else:
-                xo = int(ps['xo'] * scale)
-                yo = int(ps['yo'] * scale)
-            w(f"{var}.Position = UDim2.new({ps['xs']}, {xo}, {ps['ys']}, {yo})")
-    
-    # BackgroundColor3
-    if 'BackgroundColor3' in el:
-        c = el['BackgroundColor3']
-        w(f"{var}.BackgroundColor3 = Color3.new({c['r']}, {c['g']}, {c['b']})")
-    
-    # BackgroundTransparency
-    if 'BackgroundTransparency' in el:
-        w(f"{var}.BackgroundTransparency = {el['BackgroundTransparency']}")
-    
-    # BorderSizePixel
-    if 'BorderSizePixel' in el:
-        w(f"{var}.BorderSizePixel = {el['BorderSizePixel']}")
-    
-    # Visible
-    if 'Visible' in el:
-        w(f"{var}.Visible = {str(el['Visible']).lower()}")
-    
-    # TextColor3
-    if 'TextColor3' in el:
-        c = el['TextColor3']
-        w(f"{var}.TextColor3 = Color3.new({c['r']}, {c['g']}, {c['b']})")
-    
-    # TextTransparency
-    if 'TextTransparency' in el:
-        w(f"{var}.TextTransparency = {el['TextTransparency']}")
-    
-    # TextSize
-    if 'TextSize' in el:
-        w(f"{var}.TextSize = {el['TextSize']}")
-    
-    # Text
-    if 'Text' in el:
-        txt = str(el['Text']).replace('\\', '\\\\').replace('"', '\\"').replace('\n', '')
-        w(f'{var}.Text = "{txt}"')
-    
-    # TextWrapped
-    if 'TextWrapped' in el:
-        w(f"{var}.TextWrapped = {str(el['TextWrapped']).lower()}")
-    
-    # TextXAlignment
-    if 'TextXAlignment' in el:
-        w(f"{var}.TextXAlignment = {enum_val('TextXAlignment', el['TextXAlignment'])}")
-    
-    # TextYAlignment
-    if 'TextYAlignment' in el:
-        w(f"{var}.TextYAlignment = {enum_val('TextYAlignment', el['TextYAlignment'])}")
-    
-    # AutomaticSize
-    if 'AutomaticSize' in el:
-        w(f"{var}.AutomaticSize = {enum_val('AutomaticSize', el['AutomaticSize'])}")
-    
-    # FontFace
-    if 'FontFace' in el:
-        f = el['FontFace']
-        w(f'{var}.FontFace = Font.new("{f["url"]}", Enum.FontWeight.{f["weight"]}, Enum.FontStyle.{f["style"]})')
-    
-    # Image
-    if 'Image' in el and el['Image']:
-        w(f'{var}.Image = "{el["Image"]}"')
-    
-    # ImageTransparency
-    if 'ImageTransparency' in el:
-        w(f"{var}.ImageTransparency = {el['ImageTransparency']}")
-    
-    # UIStroke properties
-    if 'Color' in el:
-        c = el['Color']
-        w(f"{var}.Color = Color3.new({c['r']}, {c['g']}, {c['b']})")
-    
-    if 'Transparency' in el:
-        w(f"{var}.Transparency = {el['Transparency']}")
-    
-    if 'Thickness' in el:
-        w(f"{var}.Thickness = {el['Thickness']}")
-    
-    if 'ApplyStrokeMode' in el:
-        w(f"{var}.ApplyStrokeMode = {enum_val('ApplyStrokeMode', el['ApplyStrokeMode'])}")
-    
-    if 'LineJoinMode' in el:
-        w(f"{var}.LineJoinMode = {enum_val('LineJoinMode', el['LineJoinMode'])}")
-    
-    # UICorner
-    if 'CornerRadius' in el:
-        cr = el['CornerRadius']
-        w(f"{var}.CornerRadius = UDim.new({cr['s']}, {int(cr['o'])})")
-    
-    w(f"{var}.Parent = {parent}")
-    w("")
-    
-    # Children
-    for i, child in enumerate(el.get('children', [])):
-        write_element(lines, child, f'{var}_{i+1}', var, min_x, min_y, scale, False)
+        sizes.sort(key=lambda x: x[0], reverse=True)
+        self.bg_el = sizes[0][1]
+        self.main_w = sizes[0][2]['xo']
+        self.main_h = sizes[0][2]['yo']
+        self.min_x = sizes[0][3]['xo']
+        self.min_y = sizes[0][3]['yo']
+        
+        for el in self.elements:
+            cls = el.get('class', '')
+            if cls == 'TextLabel' and 'Text' in el:
+                if el.get('TextSize', 0) >= 24:
+                    self.title_el = el
+            elif cls == 'Frame' and 'BackgroundColor3' in el:
+                sz = el.get('Size', {})
+                if sz.get('xo', 0) < 200 and sz.get('yo', 0) < 100:
+                    self.buttons.append(el)
+        
+        for el in self.elements:
+            sz = el.get('Size', {})
+            if sz.get('yo', 0) > 0 and sz.get('yo', 0) < 100 and sz.get('xo', 0) > 400:
+                ps = el.get('Position', {})
+                if abs(ps.get('yo', 0) - self.min_y) < 10:
+                    self.header_el = el
+                    self.header_h = sz.get('yo', 61)
+                    break
+        
+        if not self.header_h:
+            self.header_h = 61
+
+    def generate(self):
+        self.analyze_structure()
+        self.lines = []
+        
+        gn = self.config.get('gui_name', 'ConvertedGui')
+        mw = int(self.main_w * self.scale)
+        mh = int(self.main_h * self.scale)
+        hh = int(self.header_h * self.scale)
+        
+        bg_color = self.bg_el.get('BackgroundColor3', {'r': 0.25, 'g': 0.18, 'b': 0.18}) if self.bg_el else {'r': 0.25, 'g': 0.18, 'b': 0.18}
+        bg_trans = self.bg_el.get('BackgroundTransparency', 0.25) if self.bg_el else 0.25
+        if self.bg_el and self.bg_el.get('class') == 'ImageLabel':
+            bg_trans = self.bg_el.get('ImageTransparency', 0.25)
+        
+        header_color = {'r': 0.2, 'g': 0.12, 'b': 0.12}
+        if self.header_el and 'BackgroundColor3' in self.header_el:
+            header_color = self.header_el['BackgroundColor3']
+        
+        title_text = "GUI"
+        title_color = {'r': 1, 'g': 1, 'b': 1}
+        title_size = 48
+        title_font = {'url': 'rbxasset://fonts/families/SourceSansPro.json', 'weight': 'Regular', 'style': 'Normal'}
+        title_stroke_color = {'r': 0.4, 'g': 0.2, 'b': 0.2}
+        title_stroke_thickness = 4
+        
+        if self.title_el:
+            title_text = self.title_el.get('Text', 'GUI')
+            title_color = self.title_el.get('TextColor3', title_color)
+            title_size = int(self.title_el.get('TextSize', 48) * self.scale)
+            if 'FontFace' in self.title_el:
+                title_font = self.title_el['FontFace']
+            for child in self.title_el.get('children', []):
+                if child.get('class') == 'UIStroke':
+                    title_stroke_color = child.get('Color', title_stroke_color)
+                    title_stroke_thickness = child.get('Thickness', 4) * self.scale
+        
+        btn_color = {'r': 0.326923, 'g': 0.223188, 'b': 0.223188}
+        btn_stroke_color = {'r': 1, 'g': 0.572115, 'b': 0.572115}
+        btn_stroke_thickness = 2
+        btn_corner = 15
+        btn_w = 137
+        btn_h = 69
+        
+        if self.buttons:
+            b = self.buttons[0]
+            btn_color = b.get('BackgroundColor3', btn_color)
+            sz = b.get('Size', {})
+            btn_w = int(sz.get('xo', 137))
+            btn_h = int(sz.get('yo', 69))
+            for child in b.get('children', []):
+                if child.get('class') == 'UIStroke':
+                    btn_stroke_color = child.get('Color', btn_stroke_color)
+                    btn_stroke_thickness = child.get('Thickness', 2)
+                elif child.get('class') == 'UICorner':
+                    cr = child.get('CornerRadius', {'s': 0, 'o': 15})
+                    btn_corner = int(cr.get('o', 15))
+        
+        btn_w = int(btn_w * self.scale)
+        btn_h = int(btn_h * self.scale)
+        btn_corner = int(btn_corner * self.scale)
+        btn_stroke_thickness = int(btn_stroke_thickness * self.scale)
+        
+        num_buttons = len(self.buttons) if self.buttons else 9
+        
+        cols = 3
+        rows = (num_buttons + cols - 1) // cols
+        
+        container_top = hh + 12
+        available_h = mh - container_top - 12
+        available_w = mw - 24
+        
+        pad_x = 20
+        pad_y = 20
+        if cols > 1:
+            pad_x = (available_w - (btn_w * cols)) // (cols - 1)
+            if pad_x < 10:
+                pad_x = 10
+        if rows > 1:
+            pad_y = (available_h - (btn_h * rows)) // (rows - 1)
+            if pad_y < 10:
+                pad_y = 10
+        
+        self.w("local Players = game:GetService('Players')")
+        self.w("local player = Players.LocalPlayer")
+        self.w("local playerGui = player:WaitForChild('PlayerGui')")
+        self.w("")
+        self.w("local screenGui = Instance.new('ScreenGui')")
+        self.w(f"screenGui.Name = '{gn}'")
+        self.w("screenGui.ResetOnSpawn = false")
+        self.w("screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling")
+        self.w("screenGui.Parent = playerGui")
+        self.w("")
+        self.w("local main = Instance.new('Frame')")
+        self.w("main.Name = 'Main'")
+        self.w(f"main.Size = UDim2.new(0, {mw}, 0, {mh})")
+        
+        pos = self.config.get('position', 'center')
+        pm = {
+            'center': ("UDim2.new(0.5, 0, 0.5, 0)", "Vector2.new(0.5, 0.5)"),
+            'top': ("UDim2.new(0.5, 0, 0, 10)", "Vector2.new(0.5, 0)"),
+            'bottom': ("UDim2.new(0.5, 0, 1, -10)", "Vector2.new(0.5, 1)"),
+            'left': ("UDim2.new(0, 10, 0.5, 0)", "Vector2.new(0, 0.5)"),
+            'right': ("UDim2.new(1, -10, 0.5, 0)", "Vector2.new(1, 0.5)"),
+            'topleft': ("UDim2.new(0, 10, 0, 10)", "Vector2.new(0, 0)"),
+            'topright': ("UDim2.new(1, -10, 0, 10)", "Vector2.new(1, 0)"),
+            'bottomleft': ("UDim2.new(0, 10, 1, -10)", "Vector2.new(0, 1)"),
+            'bottomright': ("UDim2.new(1, -10, 1, -10)", "Vector2.new(1, 1)"),
+        }
+        if pos in pm:
+            self.w(f"main.Position = {pm[pos][0]}")
+            self.w(f"main.AnchorPoint = {pm[pos][1]}")
+        else:
+            self.w("main.Position = UDim2.new(0, 0, 0, 0)")
+        
+        self.w("main.BackgroundTransparency = 1")
+        self.w("main.BorderSizePixel = 0")
+        self.w("main.Parent = screenGui")
+        self.w("")
+        
+        self.w("local bg = Instance.new('Frame')")
+        self.w("bg.Name = 'Background'")
+        self.w("bg.Size = UDim2.new(1, 0, 1, 0)")
+        self.w("bg.Position = UDim2.new(0, 0, 0, 0)")
+        self.w(f"bg.BackgroundColor3 = Color3.new({bg_color['r']}, {bg_color['g']}, {bg_color['b']})")
+        self.w(f"bg.BackgroundTransparency = {bg_trans}")
+        self.w("bg.BorderSizePixel = 0")
+        self.w("bg.ZIndex = 1")
+        self.w("bg.Parent = main")
+        self.w("")
+        self.w("local bgCorner = Instance.new('UICorner')")
+        self.w("bgCorner.CornerRadius = UDim.new(0, 15)")
+        self.w("bgCorner.Parent = bg")
+        self.w("")
+        
+        self.w("local header = Instance.new('Frame')")
+        self.w("header.Name = 'Header'")
+        self.w(f"header.Size = UDim2.new(1, 0, 0, {hh})")
+        self.w("header.Position = UDim2.new(0, 0, 0, 0)")
+        self.w(f"header.BackgroundColor3 = Color3.new({header_color['r']}, {header_color['g']}, {header_color['b']})")
+        self.w("header.BackgroundTransparency = 0")
+        self.w("header.BorderSizePixel = 0")
+        self.w("header.ZIndex = 2")
+        self.w("header.Parent = main")
+        self.w("")
+        self.w("local headerCorner = Instance.new('UICorner')")
+        self.w("headerCorner.CornerRadius = UDim.new(0, 15)")
+        self.w("headerCorner.Parent = header")
+        self.w("")
+        
+        title_text_escaped = title_text.replace('\\', '\\\\').replace('"', '\\"')
+        self.w("local title = Instance.new('TextLabel')")
+        self.w("title.Name = 'Title'")
+        self.w("title.Size = UDim2.new(1, 0, 1, 0)")
+        self.w("title.Position = UDim2.new(0, 0, 0, 0)")
+        self.w("title.BackgroundTransparency = 1")
+        self.w(f'title.Text = "{title_text_escaped}"')
+        self.w(f"title.TextColor3 = Color3.new({title_color['r']}, {title_color['g']}, {title_color['b']})")
+        self.w(f"title.TextSize = {title_size}")
+        self.w(f'title.FontFace = Font.new("{title_font["url"]}", Enum.FontWeight.{title_font["weight"]}, Enum.FontStyle.{title_font["style"]})')
+        self.w("title.TextXAlignment = Enum.TextXAlignment.Center")
+        self.w("title.TextYAlignment = Enum.TextYAlignment.Center")
+        self.w("title.ZIndex = 3")
+        self.w("title.Parent = header")
+        self.w("")
+        self.w("local titleStroke = Instance.new('UIStroke')")
+        self.w(f"titleStroke.Color = Color3.new({title_stroke_color['r']}, {title_stroke_color['g']}, {title_stroke_color['b']})")
+        self.w(f"titleStroke.Thickness = {title_stroke_thickness}")
+        self.w("titleStroke.Parent = title")
+        self.w("")
+        
+        self.w("local buttonContainer = Instance.new('Frame')")
+        self.w("buttonContainer.Name = 'Buttons'")
+        self.w(f"buttonContainer.Size = UDim2.new(1, -24, 1, -{container_top + 12})")
+        self.w(f"buttonContainer.Position = UDim2.new(0, 12, 0, {container_top})")
+        self.w("buttonContainer.BackgroundTransparency = 1")
+        self.w("buttonContainer.BorderSizePixel = 0")
+        self.w("buttonContainer.ZIndex = 2")
+        self.w("buttonContainer.Parent = main")
+        self.w("")
+        self.w("local grid = Instance.new('UIGridLayout')")
+        self.w(f"grid.CellSize = UDim2.new(0, {btn_w}, 0, {btn_h})")
+        self.w(f"grid.CellPadding = UDim2.new(0, {pad_x}, 0, {pad_y})")
+        self.w("grid.SortOrder = Enum.SortOrder.LayoutOrder")
+        self.w("grid.Parent = buttonContainer")
+        self.w("")
+        
+        self.w(f"for i = 1, {num_buttons} do")
+        self.w("\tlocal btn = Instance.new('Frame')")
+        self.w('\tbtn.Name = "Button" .. i')
+        self.w(f"\tbtn.BackgroundColor3 = Color3.new({btn_color['r']}, {btn_color['g']}, {btn_color['b']})")
+        self.w("\tbtn.BackgroundTransparency = 0")
+        self.w("\tbtn.BorderSizePixel = 0")
+        self.w("\tbtn.LayoutOrder = i")
+        self.w("\tbtn.ZIndex = 3")
+        self.w("\tbtn.Parent = buttonContainer")
+        self.w("")
+        self.w("\tlocal stroke = Instance.new('UIStroke')")
+        self.w(f"\tstroke.Color = Color3.new({btn_stroke_color['r']}, {btn_stroke_color['g']}, {btn_stroke_color['b']})")
+        self.w(f"\tstroke.Thickness = {btn_stroke_thickness}")
+        self.w("\tstroke.Parent = btn")
+        self.w("")
+        self.w("\tlocal corner = Instance.new('UICorner')")
+        self.w(f"\tcorner.CornerRadius = UDim.new(0, {btn_corner})")
+        self.w("\tcorner.Parent = btn")
+        self.w("end")
+        self.w("")
+        
+        if self.config.get('draggable'):
+            self.w("local UIS = game:GetService('UserInputService')")
+            self.w("local dragging, dragInput, dragStart, startPos")
+            self.w("main.InputBegan:Connect(function(input)")
+            self.w("\tif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then")
+            self.w("\t\tdragging = true")
+            self.w("\t\tdragStart = input.Position")
+            self.w("\t\tstartPos = main.Position")
+            self.w("\t\tinput.Changed:Connect(function()")
+            self.w("\t\t\tif input.UserInputState == Enum.UserInputState.End then dragging = false end")
+            self.w("\t\tend)")
+            self.w("\tend")
+            self.w("end)")
+            self.w("main.InputChanged:Connect(function(input)")
+            self.w("\tif input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then")
+            self.w("\t\tdragInput = input")
+            self.w("\tend")
+            self.w("end)")
+            self.w("UIS.InputChanged:Connect(function(input)")
+            self.w("\tif input == dragInput and dragging then")
+            self.w("\t\tlocal delta = input.Position - dragStart")
+            self.w("\t\tmain.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)")
+            self.w("\tend")
+            self.w("end)")
+            self.w("")
+        
+        dk = self.config.get('destroykey', 'none')
+        km = {'x':'X','delete':'Delete','backspace':'Backspace','escape':'Escape','p':'P','m':'M','k':'K'}
+        if dk in km:
+            self.w(f"game:GetService('UserInputService').InputBegan:Connect(function(i,g)")
+            self.w(f"\tif not g and i.KeyCode == Enum.KeyCode.{km[dk]} then screenGui:Destroy() end")
+            self.w("end)")
+        
+        return '\n'.join(self.lines)
+
+    def convert(self, xml_str):
+        try:
+            self.parse_xml(xml_str)
+            return self.generate()
+        except ET.ParseError as e:
+            return f'-- XML Error: {e}'
+        except Exception as e:
+            return f'-- Error: {e}'
+
+converter = SmartConverter()
 
 @bot.event
 async def on_ready():
@@ -359,9 +428,6 @@ async def convert_cmd(ctx, drag='false', pos='center', scl: float=1.0, key='none
     try:
         data = await att.read()
         xml = data.decode('utf-8')
-        
-        elements = parse_xml(xml)
-        
         d = drag.lower() == 'true'
         vp = ['center','top','bottom','left','right','topleft','topright','bottomleft','bottomright','original']
         p = pos.lower() if pos.lower() in vp else 'center'
@@ -369,12 +435,9 @@ async def convert_cmd(ctx, drag='false', pos='center', scl: float=1.0, key='none
         vk = ['none','x','delete','backspace','escape','p','m','k']
         k = key.lower() if key.lower() in vk else 'none'
         n = name.replace('_',' ')
-        
         await ctx.send(f"Converting: drag={d} pos={p} scale={s} key={k}")
-        
-        config = {'draggable': d, 'position': p, 'scale': s, 'destroykey': k, 'gui_name': n}
-        lua = generate_lua(elements, config)
-        
+        converter.set_config(draggable=d, position=p, scale=s, destroykey=k, gui_name=n)
+        lua = converter.convert(xml)
         f = discord.File(io.BytesIO(lua.encode('utf-8')), filename=att.filename.replace('.rbxmx','.lua'))
         await ctx.send("Done!", file=f)
     except Exception as e:
